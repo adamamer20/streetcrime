@@ -1,0 +1,2 @@
+Il file del progetto creato con Qgis 3.18.3 può essere collocato in uan directory qualsiasi, per farlo fuznionare l'importante è che nella stessa cartella ci sia una cartella chiamata "SHAPE" contenente tutti i file del DBT. All'interno del progetto vengono già effettuati alcuni Join tra shapefile e tabelle, in base al tipo di vestizione richiesta.
+Nelle vestizioni è stato replicato per quanto possibile il progetto vestito del vecchio DBT Milano. 
