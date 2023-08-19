@@ -1,137 +1,58 @@
-from typing import List #Type hinting
-import math #Extract working hour
-
-import pyproj #Type hinting for CRS
-from src.space.building import Building #Type hinting for Building
-
-import numpy as np #Generate working hours
-
 import mesa
-import mesa_geo as mg
-from shapely.geometry import Point, LineString
+import datetime as dt
+from typing import List
+import pyproj
+from shapely.geometry import Point
+from src.agent.mover import Mover
 
-from src.space.utils import redistribute_vertices, UnitTransformer
-from src.space.road_network import RoadNetwork
+class Resident(Mover):
+    """The Resident Class is a subclass of Mover. With respect to Mover, it has a home and every day the resting timeframe is generated
+    
+    Arguments:
+        unique_id (int) -- The unique id of the Resident.
+        model (mesa.Model) -- The model of the simulation where the Resident is used. See src\model\model.py
+        geometry (shapely.geometry.Point) -- The point geometry of the Resident in the city.
+        crs (pyproj.CRS) -- The crs of the Resident (usually same as mg.GeoSpace).
+    
+    Attributes:
+        _data (dict[str, int or List(datetime.datetime)])
+            -- The data of the Resident. It contains:
+                home_id (int) -- The id of the home of the resident. Generated at the start of the function
+                resting_start_time (datetime.datetime) -- The start of resting time for the Resident
+                resting_end_time(datetime.datetime) -- The end of resting time for the Resident
+    """
+    attributes: dict[str, int or List(dt.datetime)] = {
+        'home_id' : "model.space.get_random_building(self, function = 'home')",
+        'resting_start_time' : "gen_attribute('resting_start_time', attribute_type = 'datetime_variable')",
+        'resting_end_time' : "gen_attribute('resting_end_time', attribute_type = 'datetime_variable')",
+        }
+    
+    params: dict[str, float] = {
+        "mean_resting_start_time" : 21,
+        "sd_resting_start_time" : 2,
+        "mean_resting_end_time" : 7.5,
+        "sd_resting_end_time" : 0.83,
+        }
+    
+    def __init__(self, unique_id: int, model: mesa.Model, geometry: Point, crs: pyproj.CRS) -> None:
+        """Generate home for Resident, sets his status and position at home
 
-
-class Resident(mg.GeoAgent):
-    unique_id: int  # resident_id, used to link residents and nodes
-    model: mesa.Model
-    geometry: Point
-    crs: pyproj.CRS
-    origin: Building  # where he begins his trip
-    destination: Building  # the destination he wants to arrive at
-    path: List[
-        mesa.space.FloatCoordinate
-    ]  # a set containing nodes to visit in the shortest path
-    home: Building
-    work: Building
-    work_start_time: List  # time to start going to work, [h, m]
-    work_end_time: List  # time to leave work [h,m]
-    _work_start_time: float
-    _work_end_time: float
-    status: str  # work, home, or transport
-    SPEED: float
-
-    def __init__(self, unique_id, model, geometry, crs) -> None:
+    Arguments:
+        unique_id (int) -- The unique id of the Resident.
+        model (mesa.Model) -- The model of the simulation where the Resident is used. See src\model\model.py
+        geometry (shapely.geometry.Point) -- The point geometry of the Resident in the city.
+        crs (pyproj.CRS) -- The crs of the Resident (usually same as mesa_geo.GeoSpace).
+        """
         super().__init__(unique_id, model, geometry, crs)
-        #Generate working hours
-        _work_start_time = np.random.normal(9, 0.5)
-        while _work_start_time < 6 or _work_start_time > 11: #Start of working time centered on 9 with 05 deviation with limit 6 and 11
-            _work_start_time = np.random.normal(9, 0.5)
-        self.work_start_time = [math.floor(_work_start_time), (_work_start_time % 1) * 60]
-        _work_end_time = _work_start_time + np.random.choice([1, 1.5, 2])  # will work for 8 hours (with 1h, 1.5h or 2h break)
-        self._work_end_time = [math.floor(_work_end_time), (_work_end_time % 1) * 60]
-        self.step_in_path = 0
-
-    def __repr__(self) -> str:
-        return (
-            f"Resident(unique_id={self.unique_id}, geometry={self.geometry}, status={self.status}"
-        )
-
-    def set_home(self, home: Building) -> None:
-        self.home = home
-
-    def set_work(self, work: Building) -> None:
-        self.work = work
-
+        self.data['status'] = "home"
+        self.geometry = Point(self.model.space.buildings_df.at[self.data['home_id'], "entrance"])
+    
     def step(self) -> None:
-        self._prepare_to_move()
-        self._move()
-
-    def _prepare_to_move(self) -> None:
-        # start going to work
-        if (
-            self.status == "home"
-            and self.model.hour == self.work_start_time[0] #il tempo in cui la persona parte deve essere sistemato
-            ):
-            self.origin = self.home
-            self.model.space.move_resident(self, pos=self.origin.position)
-            self.destination = self.work
-            self._path_select()
-            self.status = "transport"
-        # start going home
-        elif (
-            self.status == "work"
-            and self.model.hour == self.work_end_time[0]
-            and self.model.minute == self.work_end_time[1]
-        ):
-            self.origin = self.work.position
-            self.model.space.move_resident(self, pos=self.origin.position)
-            self.destination = self.home.position
-            self._path_select()
-            self.status = "transport"
-
-    def _move(self) -> None:
-        if self.status == "transport":
-            if self.step_in_path < len(self.path):
-                next_position = self.path[self.step_in_path]
-                self.model.space.move_resident(self, next_position)
-                self.step_in_path += 1
-            else:
-                self.model.space.move_resident(self, self.destination.centroid)
-                if self.destination == self.work:
-                    self.status = "work"
-                elif self.destination == self.home:
-                    self.status = "home"
-                self.model.got_to_destination += 1
-
-    def advance(self) -> None:
-        raise NotImplementedError
-
-    def _path_select(self) -> None:
-        self.step_in_path = 0
-        if (
-            cached_path := self.model.roads.get_cached_path(
-                source=self.origin.entrance_pos, target=self.destination.entrance_pos
-            )
-        ) is not None:
-            self.path = cached_path
-        else:
-            self.path = self.model.roads.get_shortest_path(
-                source=self.origin.entrance_pos, target=self.destination.entrance_pos
-            )
-            self.model.roads.cache_path(
-                source=self.origin.entrance_pos,
-                target=self.destination.entrance_pos,
-                path=self.path,
-            )
-        self._redistribute_path_vertices()
-
-    def _redistribute_path_vertices(self) -> None:
-        # if origin and destination share the same entrance, then self.path will contain only this entrance node,
-        # and len(self.path) == 1. There is no need to redistribute path vertices.
-        if len(self.path) > 1:
-            unit_transformer = UnitTransformer(degree_crs=self.model.roads.crs)
-            original_path = LineString([Point(p) for p in self.path])
-            # from degree unit to meter
-            path_in_meters = unit_transformer.degree2meter(original_path)
-            redistributed_path_in_meters = redistribute_vertices(
-                path_in_meters, self.SPEED
-            )
-            # meter back to degree
-            redistributed_path_in_degree = unit_transformer.meter2degree(
-                redistributed_path_in_meters
-            )
-            self.path = list(redistributed_path_in_degree.coords)
-
+        """Generate resting time and proceed with Mover.step()"""
+        #Generate resting time at 2pm or at first step
+        if self.model.data['datetime'].time() == dt.time(hour = 14, minute = 0):
+            self.initialize_attributes('resting_start_time', 'resting_end_time')
+        #If it is resting time, go home
+        if (self.data['resting_end_time'] >= self.model.data['datetime'] >= self.data['resting_start_time']) and self.data['status'] != "home":
+            self.go_to('home')
+        super(Mover, self).step

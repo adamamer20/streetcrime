@@ -2,7 +2,15 @@
 	"folders": [
 		{
 			"path": ".."
+		},
+		{
+			"path": "../../../../../../miniconda3/envs/thesis"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"[python]": {
+			"editor.defaultFormatter": "ms-python.autopep8"
+		},
+		"python.formatting.provider": "none"
+	}
 }

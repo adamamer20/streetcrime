@@ -1,7 +1,7 @@
 import mesa
 
 from src.space.building import Building
-from src.agent.resident import Resident
+from src.agent.mover import Resident
 from src.space.road_network import RoadNetwork
 
 class ClockElement(mesa.visualization.TextElement):

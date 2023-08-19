@@ -42,7 +42,7 @@ def get_rounded_coordinate(
     return round(float_coordinate[0]), round(float_coordinate[1])
 
 
-def segmented(lines: gpd.GeoSeries) -> gpd.GeoSeries:
+def segmented(lines: gpd.GeoSeries) -> gpd.GeoSeries: 
     def _segmented(linestring: LineString) -> List[LineString]:
         return [
             LineString((start_node, end_node))
