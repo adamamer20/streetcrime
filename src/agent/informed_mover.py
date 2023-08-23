@@ -75,6 +75,7 @@ class InformedMover(Mover):
             else:
                 yesterday = self.model.data['datetime'].replace(day = self.model.data['datetime'].day - 1)
                 yesterday = yesterday.date()
+                #TODO: Exception if dataframe is empty
                 yesterday_data = self.model.data[f'{info_type}'][self.model.data[f'{info_type}']['date'] == yesterday]
                 known_data = yesterday_data.sample(frac = self.params['p_information'])
                 data_per_neighborhood = known_data['neighborhood'].value_counts()

@@ -1,4 +1,4 @@
-import time
+from datetime import datetime, timedelta
 import geopandas as gpd
 import numpy as np
 import mesa 
@@ -47,7 +47,8 @@ class City(mg.GeoSpace):
     """
     
     def __init__(self, 
-                 crs: str, 
+                 crs: str,
+                 model : mesa.Model = None,
                  road_network: MultiDiGraph = None, 
                  neighborhoods:gpd.GeoDataFrame = None, 
                  buildings:gpd.GeoDataFrame = None,
@@ -65,6 +66,7 @@ class City(mg.GeoSpace):
                 The buildings dataframe of the city
         """
         super().__init__(crs=crs)
+        self.model = model
         layers = {'road_network' : road_network,
                   'roads_nodes' : ox.graph_to_gdfs(road_network, nodes=True, edges=False),
                   'neighborhoods' : neighborhoods, 
@@ -167,9 +169,11 @@ class City(mg.GeoSpace):
         collected in 'today_crimes' and 'today_visits' columns of the self.neighborhoods dataframe.
         This method is only initiated if the model.worker_params.information = 1 (Perfect Information).
         """
-        self.neighborhoods['run_visits'] += self.neighborhoods['yesterday_visits'] - 1
-        self.neighborhoods['run_crimes'] += self.neighborhoods['yesterday_crimes'] - 1
-        self.neighborhoods['run_police'] += self.neighborhoods['yesterday_police'] - 1
+        yesterday = str(self.model.data['datetime'].date() - timedelta(days=1))
+        self.neighborhoods['run_visits'] += self.neighborhoods[yesterday + '_visits'] - 1
+        self.neighborhoods['run_crimes'] += self.neighborhoods[yesterday + '_crimes'] - 1
+        #TODO: should deal with empty df and columns if one chooses not to initialize some of the agents
+        self.neighborhoods['run_police'] += self.neighborhoods[yesterday + '_police'] - 1
         self.buildings.drop(['yesterday_visits', 
                              'yesterday_crimes',
                              'yesterday_police',
@@ -177,12 +181,13 @@ class City(mg.GeoSpace):
                              'run_crimes',
                              'run_police'], inplace=True, axis='columns')
         _info_neighborhoods = self.neighborhoods.copy(deep = True)
-        _info_neighborhoods = _info_neighborhoods[['yesterday_visits', 'yesterday_crimes', 'yesterday_police', 'run_visits', 'run_crimes', 'run_police']]
+        _info_neighborhoods = _info_neighborhoods[[yesterday + '_visits', yesterday + '_crimes', yesterday + '_police', 
+                                                   'run_visits', 'run_crimes', 'run_police']]
+        _info_neighborhoods.rename(columns = {yesterday + '_visits' : 'yesterday_visits', 
+                                              yesterday + '_crimes' : 'yesterday_crimes',
+                                              yesterday + '_police' : 'yesterday_police'}, inplace = True)
         self.buildings = self.buildings.merge(
             _info_neighborhoods, left_on='neighborhood', right_index = True)
-        # Initializing at 1,1 avoid moltiplication by 0 when calculating weights in self.model.space.get_random_building
-        self.neighborhoods = self.neighborhoods.assign(
-            yesterday_visits=1, yesterday_crimes=1, yesterday_police =1)
 
     def cache_path(
         self,

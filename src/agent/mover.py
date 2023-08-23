@@ -334,11 +334,16 @@ class Mover(mg.GeoAgent):
             if 'work_id' in self.data or 'policeman' in self.data: #Avoided isinstance for module circularity
                 neighborhood_id = self.model.space.find_neighborhood_by_position(self.geometry)
                 if self.data['last_neighborhood'] != neighborhood_id:
+                    today = str(self.model.data['datetime'].date())
                     if 'work_id' in self.data:
-                        column = 'yesterday_visits'
+                        column = today + '_visits'
                     elif 'policeman' in self.data:
-                        column = 'yesterday_police'
-                    self.model.space.neighborhoods.at[neighborhood_id, column] += 1
+                        column = today + '_police'
+                    try:
+                        self.model.space.neighborhoods.at[neighborhood_id, column] += 1
+                    except KeyError:
+                        self.model.space.neighborhoods[column] = 1
+                        self.model.space.neighborhoods.at[neighborhood_id, column] += 1
                     self.data['last_neighborhood'] = neighborhood_id
             #If not arrived at destination
             if self.data['step_in_path'] < len(self.data['path']):

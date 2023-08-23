@@ -39,23 +39,25 @@ class StreetCrime(mesa.Model):
         },
         params: dict[str, Any] = {
             'crs': "epsg:7791",
-            'n_steps': 70,
+            'n_steps': 300,
             'len_step': 15,  # minutes
             'start_datetime': dt.datetime(2020, 1, 1, 5, 30),
-            "num_movers": 1,
-            'movers': {'Criminal': 0,
-                       'PoliceAgent': 0},
+            "num_movers": 10,
+            'movers': {'Criminal': 0.3,
+                       'PoliceAgent': 0.3},
             'day_act_start': 8,
             'day_act_end': 19,}
         ) -> None:
         super().__init__()
+        self.params = params
         city = self._load_files(files)
         self.space = City(crs=params['crs'],
+                          model=self,
                           road_network=city['road_network'], 
                           neighborhoods=city['neighborhoods'], 
                           buildings=city['buildings'])
         params['movers']['Worker'] = 1 - sum(params['movers'].values())
-        self.params = params
+
         self.data = {
             'step_counter': 0,
             'crimes': gpd.GeoDataFrame(columns=['step', 'datetime', 'geometry', 'neighborhood',
@@ -110,14 +112,15 @@ class StreetCrime(mesa.Model):
         neighborhoods = gpd.read_file(os.path.join(
             parent_directory, files["neighborhoods_file"]))
         neighborhoods.set_index('id', inplace=True)
-        neighborhoods = neighborhoods.assign(
-            yesterday_visits = 1,
-            run_visits = 1, 
-            yesterday_crimes = 1, 
-            run_crimes = 1,
-            yesterday_police = 1,
-            run_police = 1
-            )
+        current_date = str(self.params['start_datetime'].date())
+        neighborhoods = neighborhoods.assign(**{
+            current_date + '_visits': 1,
+            current_date + '_crimes': 1,
+            current_date + '_police': 1,
+            "run_visits" : 1,
+            "run_crimes" : 1,
+            "run_police" : 1,
+        })
         neighborhoods.drop(['name', 'cap'], axis='columns', inplace=True)
         city['neighborhoods'] = neighborhoods
 

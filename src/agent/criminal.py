@@ -4,6 +4,7 @@ import geopandas as gpd
 from src.agent.resident import Resident
 from src.agent.worker import Worker
 from src.agent.police_agent import PoliceAgent
+from datetime import timedelta
 
 class Criminal(Resident):
     """The Criminal class is a subclass of Resident. Criminals are assigned a home based on the proportion of population and the income (lower income = higher probability) 
@@ -122,5 +123,12 @@ class Criminal(Resident):
                 crime = gpd.GeoDataFrame(crime, index = [0])
                 self.model.data['crimes'] = pd.concat([self.model.data['crimes'], crime], 
                                                       ignore_index = True)
-                self.model.data['info_neighborhoods'].at[neighborhood_id, 'yesterday_crimes'] += 1
+                today = str(self.model.data['datetime'].date())
+                column = today + '_crimes'
+                #TODO: This function for both space and movers should be merged in one
+                try:
+                    self.model.data['info_neighborhoods'].at[neighborhood_id, column] += 1
+                except KeyError:
+                    self.model.data['info_neighborhoods'][column] = 1
+                    self.model.data['info_neighborhoods'].at[neighborhood_id, column] += 1
                         
