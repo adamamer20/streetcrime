@@ -1,28 +1,51 @@
+#Type hinting
 import mesa
-import datetime as dt
-from typing import List
 import pyproj
 from shapely.geometry import Point
-from src.agent.mover import Mover
+from datetime import time
+from src.agent.informed_mover import InformedMover
 
-class Resident(Mover):
-    """The Resident Class is a subclass of Mover. With respect to Mover, it has a home and every day the resting timeframe is generated
-    
-    Arguments:
-        unique_id (int) -- The unique id of the Resident.
-        model (mesa.Model) -- The model of the simulation where the Resident is used. See src\model\model.py
-        geometry (shapely.geometry.Point) -- The point geometry of the Resident in the city.
-        crs (pyproj.CRS) -- The crs of the Resident (usually same as mg.GeoSpace).
-    
+class Resident(InformedMover):
+    """The Resident Class is a subclass of InformedMover. With respect to InformedMover, it has a home generates a resting timeframe every dat.
+        
+    Parameters:
+    ----------
+        unique_id : int
+            The unique id of the Mover.
+        model : mesa.Model 
+            The model of the simulation where the Mover is used. See src/model/model.py
+        geometry : shapely.geometry.Point
+            The point geometry of the Mover in the city.
+        crs : pyproj.CRS 
+            The crs of the Mover (usually same as mesa_geo.GeoSpace).
+                
     Attributes:
-        _data (dict[str, int or List(datetime.datetime)])
-            -- The data of the Resident. It contains:
-                home_id (int) -- The id of the home of the resident. Generated at the start of the function
-                resting_start_time (datetime.datetime) -- The start of resting time for the Resident
-                resting_end_time(datetime.datetime) -- The end of resting time for the Resident
+    ----------
+    attributes : dict[str : str]
+        It defines which additional attributes a Resident class has with respect to its parent class.
+        It can be a value or a method. The method is used for the initialization of the attribute in Resident.data. 
+        It contains:
+        - home_id : int : self.model.space.get_random_building(self, 'home')
+            -- The id of the building where the Resident lives. Assigned randomly when the Resident is created.
+        - resting_start_time : datetime.datetime : self.gen_attribute('resting_start_time', attribute_type = 'datetime_variable')
+            -- The time when the Resident starts resting.
+        - resting_end_time : datetime.datetime : self.gen_attribute('resting_end_time', attribute_type = 'datetime_variable')
+            -- The time when the Resident ends resting. 
+    
+    params : dict[str, float]
+        It contains fixed attributes or information on how the previously specified attributes are going to be generated.
+        - mean_resting_start_time : float
+            -- The mean time when the Resident starts resting. Default: 21
+        - sd_resting_start_time : float
+            -- The standard deviation of the time when the Resident starts resting. Default: 2
+        - mean_resting_end_time : float
+            -- The mean time when the Resident ends resting. Default: 7.5
+        - sd_resting_end_time : float
+            -- The standard deviation of the time when the Resident ends resting. Default: 0.83
+         
     """
-    attributes: dict[str, int or List(dt.datetime)] = {
-        'home_id' : "model.space.get_random_building(self, function = 'home')",
+    attributes: dict[str, int or list(dt.datetime)] = {
+        'home_id' : "model.space.get_random_building(function = 'home', resident = self)",
         'resting_start_time' : "gen_attribute('resting_start_time', attribute_type = 'datetime_variable')",
         'resting_end_time' : "gen_attribute('resting_end_time', attribute_type = 'datetime_variable')",
         }
@@ -35,24 +58,32 @@ class Resident(Mover):
         }
     
     def __init__(self, unique_id: int, model: mesa.Model, geometry: Point, crs: pyproj.CRS) -> None:
-        """Generate home for Resident, sets his status and position at home
-
-    Arguments:
-        unique_id (int) -- The unique id of the Resident.
-        model (mesa.Model) -- The model of the simulation where the Resident is used. See src\model\model.py
-        geometry (shapely.geometry.Point) -- The point geometry of the Resident in the city.
-        crs (pyproj.CRS) -- The crs of the Resident (usually same as mesa_geo.GeoSpace).
+        """Sets Resident status and position at home
+            Parameters:
+            ----------
+                unique_id : int
+                    The unique id of the Mover.
+                model : mesa.Model 
+                    The model of the simulation where the Mover is used. See src/model/model.py
+                geometry : shapely.geometry.Point
+                    The point geometry of the Mover in the city.
+                crs : pyproj.CRS 
+                    The crs of the Mover (usually same as mesa_geo.GeoSpace).
         """
         super().__init__(unique_id, model, geometry, crs)
         self.data['status'] = "home"
-        self.geometry = Point(self.model.space.buildings_df.at[self.data['home_id'], "entrance"])
+        self.geometry = Point(self.model.space.buildings.at[self.data['home_id'], 'geometry'].centroid.coords[0])
     
     def step(self) -> None:
         """Generate resting time and proceed with Mover.step()"""
-        #Generate resting time at 2pm or at first step
-        if self.model.data['datetime'].time() == dt.time(hour = 14, minute = 0):
-            self.initialize_attributes('resting_start_time', 'resting_end_time')
+        #Generate resting time at 2pm 
+        if self.model.data['datetime'].time() == time(hour = 14, minute = 0):
+            self.initialize_attributes(['resting_start_time', 'resting_end_time'])
         #If it is resting time, go home
-        if (self.data['resting_end_time'] >= self.model.data['datetime'] >= self.data['resting_start_time']) and self.data['status'] != "home":
-            self.go_to('home')
-        super(Mover, self).step
+        if (self.data['resting_end_time'] >= self.model.data['datetime'] >= self.data['resting_start_time']):
+            if self.data['status'] not in ['home', 'transport']:
+                self.go_to('home')
+        else:
+            if self.data['status'] == "home":
+                self.data['status'] = "free"
+        super(InformedMover, self).step()

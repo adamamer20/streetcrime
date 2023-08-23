@@ -1,42 +1,35 @@
-import argparse
-
+import os.path
 import mesa
-import mesa_geo as mg
 from src.model.model import StreetCrime
-from src.visualization.server import (
-    agent_draw,
-    clock_element,
-    status_chart,
-)
+import pandas as pd
+current_directory = os.path.dirname(__file__)
+parent_directory = os.path.split(current_directory)[0]
+current_directory = parent_directory
 
-def make_parser():
-    parser = argparse.ArgumentParser("Agents and Networks in Python")
-    return parser
+Milan = StreetCrime()
 
-if __name__ == "__main__":
-    city_params = {"crs": "epsg:7791", "resident_speed": 0.5}
-    model_params = {
-        "buildings_file": r"C:\Users\adiad.SPECTRE\OneDrive - Università Commerciale Luigi Bocconi\Documenti\Università\Third Year\Thesis\thesis\data\raw\DBT_2020\DBT 2020 - SHAPE\EDIFC_CR_EDF_IS.shp",
-        "buildings_fun_file": r"C:\Users\adiad.SPECTRE\OneDrive - Università Commerciale Luigi Bocconi\Documenti\Università\Third Year\Thesis\thesis\data\raw\DBT_2020\DBT 2020 - SHAPE\EDIFC_EDIFC_USO.dbf",
-        "roads_file": r"C:\Users\adiad.SPECTRE\OneDrive - Università Commerciale Luigi Bocconi\Documenti\Università\Third Year\Thesis\thesis\data\processed\EL_STR.shp",
-        "crs": city_params["crs"],
-        "show_roads": True,
-        "num_residents": mesa.visualization.Slider(
-            "Number of residents", value=50, min_value=10, max_value=150, step=10
-        ),
-        "resident_speed": mesa.visualization.Slider(
-            "Resident Walking Speed (m/s)",
-            value=city_params["resident_speed"],
-            min_value=0.1,
-            max_value=1.5,
-            step=0.1,
-        ),
-    }
-    map_element = mg.visualization.MapModule(agent_draw, map_height=600, map_width=600)
-    server = mesa.visualization.ModularServer(
-        StreetCrime,
-        [map_element, clock_element, status_chart],
-        "Milan Street Crime",
-        model_params,
-    )
-    server.launch()
+#mesa.batch_run(Milan,
+#               parameters={
+ 
+#                  params['movers']['Criminal']: [0.1, 0.2, 0.3, 0.4, 0.5],
+#               })
+# Running the model
+
+run_agents = pd.DataFrame()
+for _ in range(Milan.params['n_steps']):
+    step_agents = [agent.data for agent in Milan.space.agents]
+    step_agents = pd.DataFrame(step_agents)
+    run_agents = pd.concat([run_agents, step_agents])
+    Milan.data['step_counter'] += 1
+    Milan.step()
+    Milan.datacollector.collect(Milan)
+
+Milan.data['crimes'].to_csv(os.path.join(parent_directory, r"outputs\crimes.csv"))
+Milan.data['info_neighborhoods'].to_csv(os.path.join(parent_directory, r"outputs\info_neighborhoods.csv"))
+run_agents.to_csv(os.path.join(parent_directory, r"outputs\run_agents.csv"))
+
+#Milan_df_agents = Milan.datacollector.get_agent_vars_dataframe()
+Milan_df_model = Milan.datacollector.get_model_vars_dataframe()
+
+#Milan_df_agents.to_csv(os.path.join(parent_directory, r"outputs\run_agents.csv"))
+Milan_df_model.to_csv(os.path.join(parent_directory, r"outputs\run_model.csv"))
