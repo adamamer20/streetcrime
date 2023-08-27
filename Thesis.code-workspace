@@ -8,6 +8,9 @@
 		"[python]": {
 			"editor.defaultFormatter": "ms-python.autopep8"
 		},
-		"python.formatting.provider": "none"
+		"python.formatting.provider": "none",
+		"editor.defaultFormatter": "ms-python.black-formatter",
+		"mypy.runUsingActiveInterpreter": true,
+		"editor.acceptSuggestionOnEnter": "on"
 	}
 }

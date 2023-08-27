@@ -1,7 +1,11 @@
-import pandas as pd
-import datetime as dt
+import scipy
+import geopandas as gpd
+import os.path
+directory = os.path.dirname(__file__)
+parent_directory = os.path.split(directory)[0]
+directory = parent_directory
+    
+neighborhoods = gpd.read_file(directory + r"\data\processed\neighborhoods.gpkg")
+neighborhoods.set_index('id', inplace=True)
+scipy.stats.skewnorm(a = ae, loc = loce, scale = scalee)
 
-date = dt.datetime(2020, 1, 1, 5, 30).date()
-df = pd.DataFrame()
-df = df.assign(**{str(date) : 1})
-print(df)

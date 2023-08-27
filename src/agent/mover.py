@@ -14,6 +14,10 @@ from shapely.geometry import Point, LineString
 
 from src.space.utils import redistribute_vertices
 
+import scipy
+
+import random
+
 class Mover(mg.GeoAgent):
     """The Mover class, a subclass of GeoAgent, is the base class for all agents in the simulation. 
     It is able to move around the city using the shortest path in the road network.
@@ -125,6 +129,8 @@ class Mover(mg.GeoAgent):
             for attribute_name, attribute_value in class_obj.attributes.items():
                 self.attributes.setdefault(attribute_name, attribute_value)
             for params_name, params_value in class_obj.params.items():
+                if self.model.agent_params is not None:
+                    self.params.setdefault(params_name, self.model.agent_params.get(params_name, params_value))
                 self.params.setdefault(params_name, params_value)
         self.initialize_attributes()
     
@@ -158,51 +164,70 @@ class Mover(mg.GeoAgent):
         ----------
         attribute_value : float | datetime | list[int]
         """
-        if attribute_name in ["resting_start_time", "resting_end_time"] and self.model.data['datetime'] == self.model.params['start_datetime']: 
-            if attribute_name == "resting_start_time":
-                attribute_value = self.model.params['start_datetime']
-            elif attribute_name == "resting_end_time":
-                attribute_value = self.model.params['start_datetime'] + timedelta(hours = np.random.normal(1, 0.5))
-        else:
-            match attribute_type:
-                case "float":
-                    limits = [0,1]
-                case "datetime_fixed" | "datetime_variable":
-                    limits = [float('-inf'), float('+inf')]
-                case "timedelta":
-                    limits = [0, float('+inf')]
-            mean = self.params[f'mean_{attribute_name}']
-            sd = self.params[f'sd_{attribute_name}']
-            #Search if there are limits in the parameters of the Mover
-            try: 
-                limits[0] = self.params[f'min_{attribute_name}']
-            except KeyError:
-                pass
-            try: 
-                limits[1] = self.params[f'max_{attribute_name}']
-            except KeyError:
-                pass
+        if attribute_type in ["datetime_fixed", "datetime_variable"]:
+            limits = [float('-inf'), float('+inf')]
+            if attribute_name in ["resting_start_time", "resting_end_time"] and self.model.data['datetime'] == self.model.model_params['start_datetime']: 
+                if attribute_name == "resting_start_time":
+                    attribute_value = self.model.model_params['start_datetime']
+                elif attribute_name == "resting_end_time":
+                    attribute_value = self.model.model_params['start_datetime'] + timedelta(hours = np.random.normal(1, 0.5))
+        elif attribute_type == "float":
+            if attribute_name == "income":
+                limits = [0, float('+inf')]
+                neighborhood = self.model.space.buildings.at[self.data['home_id'], 'neighborhood']
+                ae = self.model.space.neighborhoods.at[neighborhood, 'ae']
+                loce = self.model.space.neighborhoods.at[neighborhood, 'loce']
+                scalee = self.model.space.neighborhoods.at[neighborhood, 'scalee']
+                attribute_value = scipy.stats.skewnorm.rvs(a = ae, loc = loce, scale = scalee)
+                while attribute_value < limits[0] or attribute_value > limits[1]:
+                    attribute_value = scipy.stats.skewnorm.rvs(a = ae, loc = loce, scale = scalee)
+                return attribute_value
+            elif attribute_name == "crime_motivation":
+                attribute_value = 1 - self.model.space.neighborhoods['city_income_distribution'].iloc[0].cdf(self.data['income']) + np.random.normal(0, 0.10)
+                while attribute_value < 0 or attribute_value > 1:
+                    attribute_value = 1 - self.model.space.neighborhoods['city_income_distribution'].iloc[0].cdf(self.data['income']) + np.random.normal(0, 0.10)
+                return attribute_value
+            elif attribute_name == "crime_attractiveness":
+                attribute_value = self.model.space.neighborhoods['city_income_distribution'].iloc[0].cdf(self.data['income']) + np.random.normal(0, 0.10)
+                while attribute_value < 0 or attribute_value > 1:
+                    attribute_value = self.model.space.neighborhoods['city_income_distribution'].iloc[0].cdf(self.data['income']) + np.random.normal(0, 0.10)
+                return attribute_value
+            else:
+                limits = [0,1] 
+        elif attribute_type == "timedelta":
+            limits = [0, float('+inf')]  
+        mean = self.params[f'mean_{attribute_name}']
+        sd = self.params[f'sd_{attribute_name}']
+        #Search if there are limits in the parameters of the Mover
+        try: 
+            limits[0] = self.params[f'min_{attribute_name}']
+        except KeyError:
+            pass
+        try: 
+            limits[1] = self.params[f'max_{attribute_name}']
+        except KeyError:
+            pass
             next_day = 0
             attribute_value = np.random.normal(mean, sd)
-            if ((attribute_name == "resting_end_time") 
-                or ((attribute_type in ["datetime_fixed", "datetime_variable"]) and (attribute_value >= 24))):
+        if ((attribute_name == "resting_end_time") 
+            or ((attribute_type in ["datetime_fixed", "datetime_variable"]) and (attribute_value >= 24))):
+            next_day = 1
+            if attribute_value >= 24:
+                attribute_value = attribute_value - 24
+        while attribute_value < limits[0] or attribute_value > limits[1]:
+            attribute_value = np.random.normal(mean, sd)
+        if ((attribute_name == "resting_end_time") 
+            or ((attribute_type in ["datetime_fixed", "datetime_variable"]) and (attribute_value >= 24))):
                 next_day = 1
                 if attribute_value >= 24:
                     attribute_value = attribute_value - 24
-            while attribute_value < limits[0] or attribute_value > limits[1]:
-                attribute_value = np.random.normal(mean, sd)
-            if ((attribute_name == "resting_end_time") 
-                or ((attribute_type in ["datetime_fixed", "datetime_variable"]) and (attribute_value >= 24))):
-                    next_day = 1
-                    if attribute_value >= 24:
-                        attribute_value = attribute_value - 24
-            #Return based on the time
-            if attribute_type in ["datetime_variable", "datetime_fixed", "timedelta"]:
-                attribute_value = self._proper_time_type(attribute_value, attribute_type, next_day)
+        #Return based on the time
+        if attribute_type in ["datetime_variable", "datetime_fixed", "timedelta"]:
+            attribute_value = self._proper_time_type(attribute_value, attribute_type, next_day)
         return attribute_value
             
     def _proper_time_type(self, adj_time : list, attribute_type : str, next_day : int) -> datetime:
-        rounded_minutes = self.model.params['len_step'] * round(adj_time * 60 / self.model.params['len_step'])
+        rounded_minutes = self.model.model_params['len_step'] * round(adj_time * 60 / self.model.model_params['len_step'])
         if attribute_type == "datetime_fixed":
             return [math.floor(rounded_minutes/60), rounded_minutes%60]
         elif attribute_type == "datetime_variable":
@@ -243,9 +268,9 @@ class Mover(mg.GeoAgent):
             self._check_activity()
         if self.data['destination']['id'] is None and self.data['status'] == "free":
             if (self.model.data['datetime'] >= 
-                self.model.data['datetime'].replace(hour = self.model.params['day_act_start']) 
+                self.model.data['datetime'].replace(hour = self.model.model_params['day_act_start']) 
                 and self.model.data['datetime'] <= 
-                self.model.data['datetime'].replace(hour = self.model.params['day_act_end'])):
+                self.model.data['datetime'].replace(hour = self.model.model_params['day_act_end'])):
                 self.go_to("day_act")
             else:
                 self.go_to("night_act")
@@ -318,7 +343,7 @@ class Mover(mg.GeoAgent):
             else:
                 speed = self.params['driving_speed']
             redistributed_path_in_meters = redistribute_vertices(
-                original_path, speed*self.model.params['len_step']*60 #From m/s to m/step
+                original_path, speed*self.model.model_params['len_step']*60 #From m/s to m/step
             )
             redistributed_path = list(redistributed_path_in_meters.coords)
         else:
@@ -332,7 +357,7 @@ class Mover(mg.GeoAgent):
         if self.data['status'] == "transport":
             #Adds visits of Workers or PoliceAgents to the neighborhood
             if 'work_id' in self.data or 'policeman' in self.data: #Avoided isinstance for module circularity
-                neighborhood_id = self.model.space.find_neighborhood_by_position(self.geometry)
+                neighborhood_id = self.model.space.find_neighborhood_by_pos(self.geometry)
                 if self.data['last_neighborhood'] != neighborhood_id:
                     today = str(self.model.data['datetime'].date())
                     if 'work_id' in self.data:

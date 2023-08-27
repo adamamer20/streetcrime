@@ -5,6 +5,10 @@ from src.agent.resident import Resident
 from src.agent.worker import Worker
 from src.agent.police_agent import PoliceAgent
 from datetime import timedelta
+from mesa import Model
+from shapely.geometry import Point
+from pyproj import CRS
+
 
 class Criminal(Resident):
     """The Criminal class is a subclass of Resident. Criminals are assigned a home based on the proportion of population and the income (lower income = higher probability) 
@@ -64,17 +68,19 @@ class Criminal(Resident):
 
     """
     attributes : dict[str or int or list(int) or float] = {
-        'crime_motivation' : "gen_attribute('crime_motivation')",
+        'crime_motivation' : None,
         'type' : "random.choice(['pickpocketer', 'robber'])",
         }
     
     params: dict[str, float] = {
-        "mean_crime_motivation": 0.5,
-        "sd_crime_motivation": 0.17,
         "opportunity_awareness": 300,
         "crowd_effect": 0.01,
         "p_information": 1 
         } 
+    
+    def __init__(self, unique_id: int, model: Model, geometry: Point, crs: CRS) -> None:
+        super().__init__(unique_id, model, geometry, crs)
+        self.data['crime_motivation'] = self.gen_attribute('crime_motivation')
     
     def step(self) -> None:
         """The step method of the Criminal. It checks if the Criminal can commit a crime and if so, it commits one."""
@@ -89,7 +95,7 @@ class Criminal(Resident):
         close_agents = [agent for agent in gen_close_agents if isinstance(agent, Worker)] #Only workers can be victims
         police = [agent for agent in close_agents if isinstance(agent, PoliceAgent)]
         if len(police) > 0: #Awareness of police in the vicinity
-            neighborhood_id = [self.model.space.find_neighborhood_by_position(police[0].geometry)]
+            neighborhood_id = [self.model.space.find_neighborhood_by_pos(police[0].geometry)]
             self.data['info_neighborhoods'].at[neighborhood_id, 'yesterday_police'] += 1
             self.data['info_neighborhoods'].at[neighborhood_id, 'run_police'] += 1
             return
@@ -98,7 +104,7 @@ class Criminal(Resident):
                                 and isinstance(agent, Worker)]
             if len(possible_victims) > 0:
                 victim = random.choice(possible_victims) #Choose a random victim
-                neighborhood_id = self.model.space.find_neighborhood_by_position(victim.geometry)
+                neighborhood_id = self.model.space.find_neighborhood_by_pos(victim.geometry)
                 crime = {
                         'step': self.model.data['step_counter'],
                         'datetime' : self.model.data['datetime'],

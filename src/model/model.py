@@ -4,7 +4,6 @@ import sys # To get a class from a string
 import ast # To convert string to list
 
 import uuid
-from typing import Any
 from datetime import timedelta, datetime
 
 import pandas as pd
@@ -12,6 +11,7 @@ import geopandas as gpd
 import mesa
 from shapely.geometry import Point
 import osmnx as ox
+from scipy.stats import skewnorm
 
 import datetime as dt  # To keep track of the time of the simulation
 
@@ -20,11 +20,10 @@ from src.agent.criminal import Criminal
 from src.agent.police_agent import PoliceAgent
 from src.space.city import City
 
-
-current_directory = os.path.dirname(__file__)
-for _ in range(2):
-    parent_directory = os.path.split(current_directory)[0]
-    current_directory = parent_directory
+directory = os.path.dirname(__file__)
+for i in range(2):
+    parent_directory = os.path.split(directory)[0]
+    directory = parent_directory
 
 # TODO: fix the generation of the resting time for the workers on the first day
 # TODO : check that the resident implementation of resting time (initizialization) does not create problems
@@ -32,56 +31,67 @@ for _ in range(2):
 class StreetCrime(mesa.Model):
     def __init__(
         self,
-        files: dict[str, str] = {
-            "roads_file": r"data\processed\roads.graphml",
-            "neighborhoods_file": r"data\processed\neighborhoods.shp",
-            "buildings_file": r"data\processed\buildings.shp",
-        },
-        params: dict[str, Any] = {
-            'crs': "epsg:7791",
-            'n_steps': 300,
-            'len_step': 15,  # minutes
-            'start_datetime': dt.datetime(2020, 1, 1, 5, 30),
-            "num_movers": 10,
-            'movers': {'Criminal': 0.3,
-                       'PoliceAgent': 0.3},
-            'day_act_start': 8,
-            'day_act_end': 19,}
-        ) -> None:
+        p_criminals = 0.1,
+        files= {
+            "roads_file": directory + r"\data\processed\roads.graphml",
+            "neighborhoods_file": directory + r"\data\processed\neighborhoods.gpkg",
+            "buildings_file": directory + r"\data\processed\buildings.shp"},
+        model_params = {'crs': "epsg:7791",
+                    'len_step': 10,  # minutes
+                    'start_datetime': dt.datetime(2020, 1, 1, 5, 30),
+                    'num_movers': 40,
+                    'day_act_start': 8,
+                    'day_act_end': 19,
+                    'p_agents' : {'PoliceAgent' : 0.1}
+                    },
+        agent_params = {'Mover':    {"mean_work_start_time": 8,
+                                "sd_work_start_time": 2,
+                                "mean_work_end_time": 18,
+                                "sd_work_end_time": 2,
+                                "mean_self_defence": 0.5,
+                                "sd_self_defence": 0.17,
+                                "p_information": 0.5},
+                    'InformedMover': {"p_information" : 1},
+                    'Resident': {"mean_resting_start_time": 21,
+                                "sd_resting_start_time": 2,
+                                "mean_resting_end_time": 7.5,
+                                "sd_resting_end_time": 0.83,},
+                    'Worker':   {"mean_work_start_time": 8,
+                                "sd_work_start_time": 2,
+                                "mean_work_end_time": 18,
+                                "sd_work_end_time": 2,
+                                "mean_self_defence": 0.5,
+                                "sd_self_defence": 0.17,
+                                "p_information": 0.5},
+                    'Criminal': {"mean_crime_motivation": 0.5,
+                                "sd_crime_motivation": 0.17,
+                                "opportunity_awareness": 300,
+                                "crowd_effect": 0.01,
+                                "p_information": 1},
+                    'PoliceAgent': {"p_information": 1}}) -> None:
         super().__init__()
-        self.params = params
+        self.running = True
+        self.model_params = model_params
+        self.agent_params = agent_params
+        self.model_params['p_agents']['Criminal'] = p_criminals
+        self.model_params['p_agents']['Worker'] = 1 - p_criminals - model_params['p_agents']['PoliceAgent']
         city = self._load_files(files)
-        self.space = City(crs=params['crs'],
+        self.space = City(crs=model_params['crs'],
                           model=self,
                           road_network=city['road_network'], 
                           neighborhoods=city['neighborhoods'], 
                           buildings=city['buildings'])
-        params['movers']['Worker'] = 1 - sum(params['movers'].values())
-
         self.data = {
             'step_counter': 0,
             'crimes': gpd.GeoDataFrame(columns=['step', 'datetime', 'geometry', 'neighborhood',
                                                 'victim', 'criminal', 'witnesses', 'successful']),
             'info_neighborhoods' : self.space.neighborhoods,
-            'datetime': params['start_datetime'],
+            'datetime': model_params['start_datetime'],
         }
         self.schedule = mesa.time.RandomActivation(self)
         self.create_movers()
         self.datacollector = mesa.DataCollector(
-           model_reporters={
-                'step_counter': "data['step_counter']",
-                'datetime' : "data['datetime']"
-            })
-            #agent_reporters = {
-            #    'destination_id' : "data['destination']['id']",
-            #    'destination_node' : "data['destination']['node']",
-            #    'destination_name' : "data['destination']['name']",
-            #    'step_in_path' : "data['step_in_path']",
-            #    'path' : "data['path']",
-            #    'status' : "data['status']",
-            #    'last_neighborhood' : "data['last_neighborhood']",
-            #    'activity_end_time' : "data['activity_end_time']",
-            #})
+           model_reporters = self.data)
 
     def _load_files(self, files: dict[str, str]) -> dict[str, gpd.GeoDataFrame]:
         """Load the files of the city and return a dictionary of GeoDataFrames with the loaded files
@@ -103,16 +113,15 @@ class StreetCrime(mesa.Model):
 
         # Roads
         start_time = time.time()
-        city['road_network'] = ox.io.load_graphml(os.path.join(parent_directory, files["roads_file"]))
+        city['road_network'] = ox.io.load_graphml(files["roads_file"])
         # Loading roads: --- 7.504880905151367 seconds ---
-        print("Loading roads: " + "--- %s seconds ---" %
-              (time.time() - start_time))
+        #print("Loading roads: " + "--- %s seconds ---" %
+        #      (time.time() - start_time))
 
         # Neighborhoods
-        neighborhoods = gpd.read_file(os.path.join(
-            parent_directory, files["neighborhoods_file"]))
+        neighborhoods = gpd.read_file(files["neighborhoods_file"])
         neighborhoods.set_index('id', inplace=True)
-        current_date = str(self.params['start_datetime'].date())
+        current_date = str(self.model_params['start_datetime'].date())
         neighborhoods = neighborhoods.assign(**{
             current_date + '_visits': 1,
             current_date + '_crimes': 1,
@@ -120,14 +129,16 @@ class StreetCrime(mesa.Model):
             "run_visits" : 1,
             "run_crimes" : 1,
             "run_police" : 1,
+            'city_income_distribution' : skewnorm(a = neighborhoods['city_ae'].iloc[0], 
+                                                  loc = neighborhoods['city_loce'].iloc[0], 
+                                                  scale =  neighborhoods['city_scalee'].iloc[0]),
         })
-        neighborhoods.drop(['name', 'cap'], axis='columns', inplace=True)
+        neighborhoods.drop(['cap'], axis='columns', inplace=True) 
         city['neighborhoods'] = neighborhoods
 
         # Buildings
         start_time = time.time()
-        buildings = gpd.read_file(os.path.join(
-            parent_directory, files["buildings_file"]))
+        buildings = gpd.read_file(files["buildings_file"])
         buildings.set_index('id', inplace=True)
         buildings[['home', 'day_act', 'night_act']] = buildings[[
             'home', 'day_act', 'night_act']].astype(bool)
@@ -149,12 +160,14 @@ class StreetCrime(mesa.Model):
         return city
 
     def create_movers(self) -> None:
+        #Faster than list comprehension and map
         """Creates the movers of the model and adds them to the schedule and the space
         """
+        start_time = time.time()
         movers = []
-        for mover_type in self.params['movers']:
+        for mover_type in self.model_params['p_agents']:
             class_type = getattr(sys.modules[__name__], mover_type)
-            for _ in range(int(self.params['movers'][mover_type]*self.params['num_movers'])):
+            for _ in range(int(self.model_params['p_agents'][mover_type]*self.model_params['num_movers'])):
                 mover = class_type(
                     unique_id=uuid.uuid4().int,
                     model=self,
@@ -170,10 +183,15 @@ class StreetCrime(mesa.Model):
         """
         # Advance time
         self.data['datetime'] = self.data['datetime'] + \
-            timedelta(minutes=self.params['len_step'])
+            timedelta(minutes=self.model_params['len_step'])
         # Only at midnight of each day after the first one, update information on crimes and visits of the previous day
         if (self.data['datetime'].day > 1 and self.data['datetime'].hour == 0 and self.data['datetime'].minute == 0):
             self.space.update_information()
         # Randomly compute step for each agent
         self.schedule.step()
 
+Milan = StreetCrime()
+
+for _ in range(500):
+    Milan.step()
+    

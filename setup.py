@@ -1,5 +1,7 @@
 from setuptools import find_packages, setup
 
+from setuptools import setup
+
 setup(
     name="src",
     packages=find_packages(),
@@ -7,4 +9,6 @@ setup(
     description="Street Theft and Robbery in Milan",
     author="Adam Amer",
     license="",
+    ext_modules = cythonize("helloworld.pyx")
+
 )

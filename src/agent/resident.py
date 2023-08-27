@@ -48,6 +48,7 @@ class Resident(InformedMover):
         'home_id' : "model.space.get_random_building(function = 'home', resident = self)",
         'resting_start_time' : "gen_attribute('resting_start_time', attribute_type = 'datetime_variable')",
         'resting_end_time' : "gen_attribute('resting_end_time', attribute_type = 'datetime_variable')",
+        'income' : "gen_attribute('income')"
         }
     
     params: dict[str, float] = {

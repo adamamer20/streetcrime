@@ -3,6 +3,7 @@ import geopandas as gpd
 import numpy as np
 import mesa 
 import mesa_geo as mg
+import shapely
 from shapely.geometry import Point
 import os.path
 from src.agent.mover import Mover
@@ -37,7 +38,7 @@ class City(mg.GeoSpace):
     Methods:
         get_random_building(resident : Resident, function : str) -> int
             Returns a random building id based on the function passed as argument
-        find_neighborhood_by_position(position : Point) -> int
+        find_neighborhood_by_pos(position : Point) -> int
             Returns the neighborhood id of the neighborhood in which the position passed as argument is contained
         distance_from_buildings(position : Point) -> gpd.GeoSeries
             Returns the distance from the position passed as argument to all the buildings in the city
@@ -102,7 +103,7 @@ class City(mg.GeoSpace):
                 match type(resident).__qualname__:
                     case Criminal.__qualname__:
                         #Weights = proportion of population in each neighborhood * (1/income)
-                        weights = self.neighborhoods['prop'] * (1/self.neighborhoods['income'])
+                        weights = self.neighborhoods['prop'] * (1/self.neighborhoods['mean income'])
                     case _:
                         #Weights = proportion of population in each neighborhood
                         weights = self.neighborhoods['prop']
@@ -142,7 +143,7 @@ class City(mg.GeoSpace):
                 _building = self.buildings.sample(n=1)
         return _building.index[0]
 
-    def find_neighborhood_by_position(self, position: Point) -> int:
+    def find_neighborhood_by_pos(self, position: Point) -> int:
         """Find the neighborhood in which the position passed as argument is contained
 
         Args:
@@ -151,7 +152,9 @@ class City(mg.GeoSpace):
         Returns:
             int: The id of the neighborhood
         """
-        return self.neighborhoods[self.neighborhoods['geometry'].contains(position)].index[0]
+        intersections = [(shapely.intersection(position, neighborhood)) for neighborhood in self.neighborhoods.geometry]
+        self.neighborhoods['common_area'] = [intersection.area for intersection in intersections]
+        return self.neighborhoods['common_area'].idxmax()
 
     def distance_from_buildings(self, position: Point) -> gpd.GeoSeries:
         """Find the distance from the position passed as argument to all the buildings in the city

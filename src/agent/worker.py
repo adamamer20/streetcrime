@@ -1,4 +1,7 @@
 from src.agent.resident import Resident
+from mesa import Model
+from shapely.geometry import Point
+from pyproj import CRS
 
 class Worker(Resident):
     """The Worker class is a subclass of Resident. Workers are assigned a home based on the proportion of population in each neighborhood and have a fixed work place and working hours.
@@ -70,6 +73,7 @@ class Worker(Resident):
         'work_start_time' : "gen_attribute('work_start_time', attribute_type = 'datetime_fixed')",
         'work_end_time' : "gen_attribute('work_end_time', attribute_type = 'datetime_fixed')",
         'self_defence' : "gen_attribute('self_defence', attribute_type = 'float')",
+        'crime_attractiveness' : None
         }
     
     params: dict[str, float] = {
@@ -82,6 +86,10 @@ class Worker(Resident):
         "p_information": 0.5
         }
             
+    def __init__(self, unique_id: int, model: Model, geometry: Point, crs: CRS) -> None:
+        super().__init__(unique_id, model, geometry, crs)
+        self.data['crime_attractiveness'] = self.gen_attribute('crime_attractiveness')
+        
     def step(self) ->  None:
         """The step method of the Worker. Gets daily information about crimes in the city and goes to work if it's working time."""
         self.update_info('crimes')
