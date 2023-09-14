@@ -9,6 +9,4 @@ setup(
     description="Street Theft and Robbery in Milan",
     author="Adam Amer",
     license="",
-    ext_modules = cythonize("helloworld.pyx")
-
 )

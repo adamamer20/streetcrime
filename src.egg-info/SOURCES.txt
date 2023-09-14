@@ -1,5 +1,7 @@
 setup.py
 scripts/__init__.py
+scripts/batch_run (not working).py
+scripts/deco_runs.py
 scripts/run.py
 src.egg-info/PKG-INFO
 src.egg-info/SOURCES.txt
