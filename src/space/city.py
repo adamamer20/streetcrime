@@ -6,35 +6,29 @@ import mesa_geo as mg
 import shapely
 from shapely.geometry import Point
 import os.path
-from src.agent.mover import Mover
-from src.agent.resident import Resident
-from src.agent.worker import Worker
-from src.agent.criminal import Criminal
+from src.agents.mover import Mover
+from src.agents.resident import Resident
+from src.agents.worker import Worker
+from src.agents.criminal import Criminal
 from networkx import MultiDiGraph
 import osmnx as ox
 import pickle
 import random
+import ast
+import warnings
 
-current_directory = os.path.dirname(__file__)
-for _ in range(2):
-    parent_directory = os.path.split(current_directory)[0]
-    current_directory = parent_directory
     
 class City(mg.GeoSpace):
     """
     The City class is the GeoSpace in which agents move.
-    It is used to store the road network and the buildings and neighborhoods dataframes.
-    ...
+    It is used to store the road & public transport network, the buildings and neighborhoods dataframes.
     
-    Arguments:
-        crs(str)
+    Parameters:
+    ----------
+        crs : pyproj.CRS
             The crs of the city
-        road_network(gpd.GeoDataFrame, optional)
-            The road network of the city. Will be converted to a RoadNetwork object (see src/space/road_network)
-        neighborhoods(gpd.GeoDataFrame, optional)
-            The neighborhoods dataframe of the city
-        buildings_df(gpd.GeoDataFrame, optional)
-            The buildings dataframe of the city
+        roads : gpd.GeoDataFrame, optional)
+        
     Methods:
         get_random_building(resident : Resident, function : str) -> int
             Returns a random building id based on the function passed as argument
@@ -48,19 +42,25 @@ class City(mg.GeoSpace):
     """
     
     def __init__(self, 
-                 crs: str,
-                 model : mesa.Model = None,
-                 road_network: MultiDiGraph = None, 
-                 neighborhoods:gpd.GeoDataFrame = None, 
-                 buildings:gpd.GeoDataFrame = None,
+                crs: str,
+                directory: str = None,
+                model : mesa.Model = None,
+                roads_nodes : gpd.GeoDataFrame = None,
+                roads_edges : gpd.GeoDataFrame = None,
+                roads: MultiDiGraph = None,
+                public_transport_nodes : gpd.GeoDataFrame = None,
+                public_transport_edges : gpd.GeoDataFrame = None,
+                public_transport: MultiDiGraph = None,
+                neighborhoods:gpd.GeoDataFrame = None, 
+                buildings:gpd.GeoDataFrame = None,
                 **other_layers: gpd.GeoDataFrame | mg.RasterLayer | mg.ImageLayer) -> None:
         #TODO: specify columns of the dataframes
         """
             Arguments:
             crs(str)
                 The crs of the city
-            road_network(networkx.MultiDiGraph, optional)
-                The road network of the city. Will be converted to a RoadNetwork object (see src/space/road_network)
+            roads(networkx.MultiDiGraph, optional)
+                The road network of the city. Will be converted to a RoadNetwork object (see src/space/roads)
             neighborhoods(gpd.GeoDataFrame, optional)
                 The neighborhoods dataframe of the city
             buildings_df(gpd.GeoDataFrame, optional)
@@ -68,8 +68,13 @@ class City(mg.GeoSpace):
         """
         super().__init__(crs=crs)
         self.model = model
-        layers = {'road_network' : road_network,
-                  'roads_nodes' : ox.graph_to_gdfs(road_network, nodes=True, edges=False),
+        self.directory = directory
+        layers = {'roads' : roads,
+                  'roads_nodes' : roads_nodes,
+                  'roads_edges' : roads_edges,
+                  'public_transport_nodes' : public_transport_nodes,
+                  'public_transport_edges' : public_transport_edges,
+                  'public_transport' : public_transport,
                   'neighborhoods' : neighborhoods, 
                   'buildings' : buildings}
         layers.update(**other_layers)
@@ -78,13 +83,7 @@ class City(mg.GeoSpace):
         #for layer in layers.values():
             #if not isinstance(layer, MultiDiGraph):
             #    self.add_layer(layer)
-        self._path_cache_result = os.path.join(current_directory, "outputs\_path_cache_result.pkl")
-        try:
-            with open(self._path_cache_result, "rb") as cached_result: #"rb" = read binary", "with" allows to open and close after execution 
-                self._path_select_cache = pickle.load(cached_result)
-        except (FileNotFoundError, EOFError):
-            self._path_select_cache = dict()
-        #TEST
+        self._load_cache_files(['roads', 'public_transport'])
 
     def get_random_building(self, 
                             function: str = None,
@@ -100,45 +99,54 @@ class City(mg.GeoSpace):
         """
         match function:
             case "home":
+                def _sample_home(weights : gpd.GeoSeries) -> gpd.GeoDataFrame:
+                    _neighborhood = self.neighborhoods.sample(n=1, weights=weights)
+                    return self.buildings[(self.buildings['home'] == True) & (self.buildings['neighborhood'] == _neighborhood.index[0])].sample(n = 1)
                 match type(resident).__qualname__:
                     case Criminal.__qualname__:
                         #Weights = proportion of population in each neighborhood * (1/income)
                         weights = self.neighborhoods['prop'] * (1/self.neighborhoods['mean income'])
+                        _building = _sample_home(weights)
+                    case Worker.__qualname__:
+                        #Weights = proportion of population in each neighborhood 
+                        weights = self.neighborhoods['prop']
+                        #Check that it's different from the work building
+                        _building = _sample_home(weights)
+                        while _building.index[0] == resident.data['work_id']:
+                            _building = _sample_home(weights)
                     case _:
                         #Weights = proportion of population in each neighborhood
                         weights = self.neighborhoods['prop']
-                _neighborhood_df = self.neighborhoods.sample(n=1, weights=weights) #TODO: TEST
-                #_building = self.buildings[(self.buildings['home'] == True) & (self.buildings['neighborhood'] == _neighborhood_df.index[0])].sample(n = 1)
-                # TODO: RIGHT ONE BUT USE IT ONLY WITH ALL BUILDINGS, use only building df at the end of the function to avoid repetition
-                _building = self.buildings[self.buildings['home'] == True].sample(n=1)
-                if type(resident).__qualname__ == Worker.__qualname__:
-                    while _building.index[0] == resident.data['work_id']:
-                        _building = self.buildings[self.buildings['home'] == True].sample(n=1)
+                        _building = _sample_home(weights)    
             case "day_act" | "night_act":
+                    #On the first day, residents don't have information thus get a building based on distance
                     if resident.model.data['datetime'].day == 1:
-                        #Weights = distance from the resident
                         weights = 1/self.distance_from_buildings(resident.geometry)
                     else:
-                        match type(resident).__qualname__:
-                            case Worker.__qualname__:
-                                #The worker chooses based on the distance from him and the known number of yesterday crimes in the neighborhood
-                                #TODO: Instead of creating a deep copy, merge columns to existing self.buildings by renaming them like 'yesterday_crimes_resident'? 
-                                _buildings = self.buildings.copy(deep=True)
-                                _buildings.drop(['yesterday_crimes', 'run_crimes'], axis='columns', inplace = True)
-                                _buildings = _buildings.merge(resident.data['info_neighborhoods'], left_on = 'neighborhood', right_index = True)
-                                weights = (1/self.distance_from_buildings(resident.geometry)) * (1/_buildings['yesterday_crimes']) * (1/_buildings['run_crimes'])
-                            case Criminal.__qualname__:
-                                #The criminal chooses based on the distance from him and the known number of yesterday visits in the neighborhood
-                                weights = (1/self.distance_from_buildings(resident.geometry)) * (1/self.buildings['yesterday_visits'])
-                            case _:
-                                weights = 1/self.distance_from_buildings(resident.geometry)
+                        columns_names = [
+                                node.id for node in ast.walk(ast.parse(resident.params['act_decision_rule'])) 
+                                if isinstance(node, ast.Name)
+                                ]
+                        if 'distance' in columns_names:
+                            distance = self.distance_from_buildings(resident.geometry)
+                            columns_names.remove('distance')
+                        if 'mean_income' in columns_names:
+                            mean_income = self.buildings['mean_income']
+                            columns_names.remove('mean_income')
+                        if resident.params['p_information'] == 1:
+                            columns = [self.buildings[column_name] for column_name in columns_names]
+                        else:
+                            _buildings = self.buildings.copy(deep=True)
+                            _buildings.drop(columns_names, axis='columns', inplace = True)
+                            relevant_info = resident.model.data['info_neighborhoods'].loc[resident.unique_id, columns_names]
+                            _buildings = _buildings.merge(relevant_info, left_on = 'neighborhood', right_index = True)
+                            columns = [_buildings[column_name] for column_name in columns_names] 
+                        for name, column in zip(columns_names, columns):
+                            exec(f"{name} = column")                            
+                        weights = eval(resident.params['act_decision_rule'])
+                    weights = weights.astype(float)
                     weights.replace(np.inf, 0, inplace=True)
-                    _building = self.buildings[(self.buildings[function] == True)].sample(n=1, weights=weights)
-                    #Avoiding that the same building gets selected
-                    while _building['entrance_node'].iloc[0] == ox.nearest_nodes(self.road_network, 
-                                                                         resident.geometry.x,
-                                                                         resident.geometry.y):
-                        _building = self.buildings[(self.buildings[function] == True)].sample(n=1, weights=weights)
+                    _building = self.buildings[(self.buildings[function] == True)].sample(n=1, weights=weights)                            
             case _:
                 _building = self.buildings.sample(n=1)
         return _building.index[0]
@@ -146,16 +154,22 @@ class City(mg.GeoSpace):
     def find_neighborhood_by_pos(self, position: Point) -> int:
         """Find the neighborhood in which the position passed as argument is contained
 
-        Args:
+        Parameters:
+        ----------
             position (Point): The position to find the containing neighborhood
 
         Returns:
+        ----------
             int: The id of the neighborhood
         """
-        intersections = [(shapely.intersection(position, neighborhood)) for neighborhood in self.neighborhoods.geometry]
-        self.neighborhoods['common_area'] = [intersection.area for intersection in intersections]
-        return self.neighborhoods['common_area'].idxmax()
-
+        try:
+            intersecting_neighborhoods = self.neighborhoods[self.neighborhoods.geometry.contains(position)]
+            index = intersecting_neighborhoods.index[0]
+        except IndexError:
+            warnings.warn(f"Position {position} is not contained in any neighborhood", RuntimeWarning)
+            index = None
+        return index
+            
     def distance_from_buildings(self, position: Point) -> gpd.GeoSeries:
         """Find the distance from the position passed as argument to all the buildings in the city
 
@@ -167,44 +181,37 @@ class City(mg.GeoSpace):
         """
         return self.buildings['geometry'].distance(position)
 
-    def update_information(self) -> None:
-        """Updates 'yesterday_crimes' and 'yesterday_visits' columns of the self.buildings with data
-        collected in 'today_crimes' and 'today_visits' columns of the self.neighborhoods dataframe.
-        This method is only initiated if the model.worker_params.information = 1 (Perfect Information).
-        """
-        yesterday = str(self.model.data['datetime'].date() - timedelta(days=1))
-        self.neighborhoods['run_visits'] += self.neighborhoods[yesterday + '_visits'] - 1
-        self.neighborhoods['run_crimes'] += self.neighborhoods[yesterday + '_crimes'] - 1
-        #TODO: should deal with empty df and columns if one chooses not to initialize some of the agents
-        self.neighborhoods['run_police'] += self.neighborhoods[yesterday + '_police'] - 1
-        self.buildings.drop(['yesterday_visits', 
-                             'yesterday_crimes',
-                             'yesterday_police',
-                             'run_visits', 
-                             'run_crimes',
-                             'run_police'], inplace=True, axis='columns')
-        _info_neighborhoods = self.neighborhoods.copy(deep = True)
-        _info_neighborhoods = _info_neighborhoods[[yesterday + '_visits', yesterday + '_crimes', yesterday + '_police', 
-                                                   'run_visits', 'run_crimes', 'run_police']]
-        _info_neighborhoods.rename(columns = {yesterday + '_visits' : 'yesterday_visits', 
-                                              yesterday + '_crimes' : 'yesterday_crimes',
-                                              yesterday + '_police' : 'yesterday_police'}, inplace = True)
-        self.buildings = self.buildings.merge(
-            _info_neighborhoods, left_on='neighborhood', right_index = True)
-
     def cache_path(
         self,
+        network_name : str,
         source_node: mesa.space.FloatCoordinate,
         target_node: mesa.space.FloatCoordinate,
         path: list[mesa.space.FloatCoordinate],
     ) -> None:
-        #print(f"caching path... current number of cached paths: {len(self._path_select_cache)}")
-        self._path_select_cache[(source_node, target_node)] = path
-        self._path_select_cache[(target_node, source_node)] = list(reversed(path))
-        with open(self._path_cache_result, "wb") as cached_result:
-            pickle.dump(self._path_select_cache, cached_result)
+        #print(f"caching path... current number of cached paths: {len(self._path_cache)}")
+        cache = getattr(self, f"_cache_{network_name}")
+        cache[(source_node, target_node)] = path
+        
 
     def get_cached_path(
-        self, source_node: mesa.space.FloatCoordinate, target_node: mesa.space.FloatCoordinate
+        self, 
+        network_name: str,
+        source_node: mesa.space.FloatCoordinate,
+        target_node: mesa.space.FloatCoordinate
     ) -> list[mesa.space.FloatCoordinate]:
-        return self._path_select_cache.get((source_node, target_node), None)
+        cache = getattr(self, f"_cache_{network_name}")
+        return cache.get((source_node, target_node), None)
+    
+    def _load_cache_files(self, layers : list[str]) -> None:
+        for layer in layers:
+            setattr(self, f"_path_cache_{layer}", self.directory + f"\outputs\_cache_{layer}.pkl")
+            try:
+                with open(getattr(self, f"_path_cache_{layer}"), "rb") as cached_result: 
+                    setattr(self, f"_cache_{layer}", pickle.load(cached_result))
+            except (FileNotFoundError, EOFError):
+                setattr(self, f"_cache_{layer}", dict())
+
+    def save_cache_files(self, layers : list[str]) -> None:
+        for layer in layers:
+            with open(getattr(self, f"_path_cache_{layer}"), "wb") as cache_file:
+                pickle.dump(getattr(self, f"_cache_{layer}"), cache_file)
