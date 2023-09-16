@@ -104,14 +104,17 @@ class Criminal(Resident):
                     'date' : self.model.data['datetime'].date(),
                     'position' : self.geometry,
                     'neighborhood' : self.model.space.find_neighborhood_by_pos(self.geometry),
-                    'victim' : None,
                     'criminal' : self.unique_id,
                     'witnesses' : len(possible_victims) - 1,
                     'victim' : None,
                     'type' : None,
                     'successful' : None,
-                    'prevented' : None,
+                    'prevented' : False,
                     }
+            if isinstance(self, Pickpocket):
+                crime['type'] = "pickpocketing"
+            elif isinstance(self, Robber):
+                crime['type'] = "robbery"
             police = [agent for agent in close_agents if isinstance(agent, PoliceAgent)]
             if len(police) > 0: #Awareness of police in the vicinity
                 neighborhood_id = [self.model.space.find_neighborhood_by_pos(police[0].geometry)]
@@ -131,13 +134,11 @@ class Criminal(Resident):
                     neighborhood_id = self.model.space.find_neighborhood_by_pos(victim.geometry)
                     #If the motivation is higher than the crowd deterrance
                     if isinstance(self, Pickpocket):
-                        crime['type'] = "pickpocketing"
                         if (self.data['crime_motivation'] + self.params['crowd_effect']*(len(possible_victims)-1) + random.gauss(0, 0.05)) >= np.random.uniform(0, 1):
                             crime['successful'] = True
                         else:
                             crime['successful'] = False
                     elif isinstance(self, Robber):
-                        crime['type'] = "robbery"
                         if ((self.data['crime_motivation'] - self.params['crowd_effect']*(len(possible_victims)-1) + random.gauss(0, 0.05)) >= (np.random.uniform(0, 1))) and (self.data['crime_motivation'] >= victim.data['self_defence']):
                             crime['successful'] = True
                         else:

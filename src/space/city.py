@@ -120,33 +120,36 @@ class City(mg.GeoSpace):
                         _building = _sample_home(weights)    
             case "day_act" | "night_act":
                     #On the first day, residents don't have information thus get a building based on distance
-                    if resident.model.data['datetime'].day == 1:
-                        weights = 1/self.distance_from_buildings(resident.geometry)
+                    if resident.params['act_decision_rule'] != "":
+                        _building = self.buildings[(self.buildings[function] == True)].sample(n=1)                       
                     else:
-                        columns_names = [
-                                node.id for node in ast.walk(ast.parse(resident.params['act_decision_rule'])) 
-                                if isinstance(node, ast.Name)
-                                ]
-                        if 'distance' in columns_names:
-                            distance = self.distance_from_buildings(resident.geometry)
-                            columns_names.remove('distance')
-                        if 'mean_income' in columns_names:
-                            mean_income = self.buildings['mean_income']
-                            columns_names.remove('mean_income')
-                        if resident.params['p_information'] == 1:
-                            columns = [self.buildings[column_name] for column_name in columns_names]
+                        if resident.model.data['datetime'].day == 1:
+                            weights = 1/self.distance_from_buildings(resident.geometry)
                         else:
-                            _buildings = self.buildings.copy(deep=True)
-                            _buildings.drop(columns_names, axis='columns', inplace = True)
-                            relevant_info = resident.model.data['info_neighborhoods'].loc[resident.unique_id, columns_names]
-                            _buildings = _buildings.merge(relevant_info, left_on = 'neighborhood', right_index = True)
-                            columns = [_buildings[column_name] for column_name in columns_names] 
-                        for name, column in zip(columns_names, columns):
-                            exec(f"{name} = column")                            
+                            columns_names = [
+                                    node.id for node in ast.walk(ast.parse(resident.params['act_decision_rule'])) 
+                                    if isinstance(node, ast.Name)
+                                    ]
+                            if 'distance' in columns_names:
+                                distance = self.distance_from_buildings(resident.geometry)
+                                columns_names.remove('distance')
+                            if 'mean_income' in columns_names:
+                                mean_income = self.buildings['mean_income']
+                                columns_names.remove('mean_income')
+                            if resident.params['p_information'] == 1:
+                                columns = [self.buildings[column_name] for column_name in columns_names]
+                            else:
+                                _buildings = self.buildings.copy(deep=True)
+                                _buildings.drop(columns_names, axis='columns', inplace = True)
+                                relevant_info = resident.model.data['info_neighborhoods'].loc[resident.unique_id, columns_names]
+                                _buildings = _buildings.merge(relevant_info, left_on = 'neighborhood', right_index = True)
+                                columns = [_buildings[column_name] for column_name in columns_names] 
+                            for name, column in zip(columns_names, columns):
+                                exec(f"{name} = column")                            
                         weights = eval(resident.params['act_decision_rule'])
-                    weights = weights.astype(float)
-                    weights.replace(np.inf, 0, inplace=True)
-                    _building = self.buildings[(self.buildings[function] == True)].sample(n=1, weights=weights)                            
+                        weights = weights.astype(float)
+                        weights.replace(np.inf, 0, inplace=True)
+                        _building = self.buildings[(self.buildings[function] == True)].sample(n=1, weights=weights)   
             case _:
                 _building = self.buildings.sample(n=1)
         return _building.index[0]

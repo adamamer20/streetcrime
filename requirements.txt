@@ -1,14 +1,5 @@
-dbfread==2.0.7
-fiona==1.9.4 
-geopandas==0.13.2
-matplotlib==3.7.2
-mesa==2.1.1
-momepy==0.6.0
-networkx==3.1
-numpy==1.25.2
-osmnx==1.6.0
-pandas==2.0.3
-pyproj==3.6.0
-seaborn==0.12.2
-setuptools==68.1.2
-Shapely==2.0.1
+# DO NOT include azure-functions-worker in this file
+# The Python Worker is managed by Azure Functions platform
+# Manually managing azure-functions-worker may cause unexpected issues
+
+azure-functions

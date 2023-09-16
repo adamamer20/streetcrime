@@ -1,0 +1,7 @@
+,parameter,crimeratelower,crimerateupper,crimeratesignificant,psuccessfullower,psuccessfulupper,psuccessfulsignificant,probberieslower,probberiesupper,probberiessignificant,ppickpocketinglower,ppickpocketingupper,ppickpocketingsignificant
+0,P. of PoliceAgent,-61.72,57.21,,-68.79,-11.54,$^*$,-40.83,114.92,,-63.77,27.18,
+1,P. of Pickpocket,-0.39,182.24,,-100.56,-12.66,$^*$,-101.91,137.23,,-100.73,38.93,
+2,P. of Robber,-22.78,114.46,,-75.54,-9.48,$^*$,17.97,197.67,$^*$,-140.28,-35.33,$^*$
+3,P. of Worker,-888.93,1386.35,,-1172.27,-77.1,$^*$,-854.67,2124.95,,-1487.39,252.6,
+4,P. information of Worker,-136.18,241.06,,-266.82,-85.24,$^*$,-260.46,282.83,,-200.17,88.32,
+5,Opportunity awareness,104.32,533.16,$^*$,14.62,221.03,$^*$,-569.99,121.13,,-150.28,177.66,

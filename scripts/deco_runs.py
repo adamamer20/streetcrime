@@ -9,14 +9,14 @@ import geopandas as gpd
 import osmnx as ox
 from scipy.stats import skewnorm
 
-@concurrent() # We add this for the concurrent function
+@concurrent(4) # We add this for the concurrent function
 def run(city, 
         model_params = {
             'crs': "epsg:7791",
-            'days': 2,
+            'days': 5,
             'len_step': 15,  # minutes
             'start_datetime': dt.datetime(2020, 1, 1, 5, 30),
-            'num_movers': 800,
+            'num_movers': 500,
             'day_act_start': 8,
             'day_act_end': 19,
             'p_agents' : {'PoliceAgent' : 0.1,
@@ -24,7 +24,7 @@ def run(city,
                             'Robber' : 0.05},
             },
         agents_params = {
-            'Resident': {"mean_resting_start_time": 21,
+            'Resident': {"rmean_resting_start_time": 21,
                         "sd_resting_start_time": 2,
                         "mean_resting_end_time": 7.5,
                         "sd_resting_end_time": 0.83,},
@@ -70,6 +70,69 @@ def multiple_runs():
     city = load_files()
     city['directory'] = directory
     
+    #sensitivty_analysis(city)
+    for _ in range(2):
+        run(city = city, 
+            agents_params = {
+            'Resident': {"mean_resting_start_time": 21,
+                        "sd_resting_start_time": 2,
+                        "mean_resting_end_time": 7.5,
+                        "sd_resting_end_time": 0.83,},
+            'Worker':   {"mean_work_start_time": 8,
+                        "sd_work_start_time": 2,
+                        "min_work_start_time": 5,
+                        "mean_work_end_time": 18,
+                        "sd_work_end_time": 2,
+                        "max_work_end_time": 21,
+                        "mean_self_defence": 0.5,
+                        "sd_self_defence": 0.17,
+                        "p_information": 0.5},
+            'Criminal': {"opportunity_awareness" : 150,
+                        "crowd_effect": 0.01,
+                        "p_information": 1},
+            'Pickpocket' : {"act_decision_rule": "1/np.log10(distance) * yesterday_visits * run_visits * mean_income * (1/yesterday_police) * (1/run_police)"},
+            'Robber' : {"act_decision_rule" : "1/np.log10(distance) * (1/yesterday_visits) * (1/run_visits) * mean_income * (1/yesterday_police) * (1/run_police)"},
+            'PoliceAgent': {"act_decision_rule": ""}})
+    
+    for _ in range(2):
+        run(city = city, 
+            model_params = {
+                'crs': "epsg:7791",
+                'days': 14,
+                'len_step': 15,  # minutes
+                'start_datetime': dt.datetime(2020, 1, 1, 5, 30),
+                'num_movers': 600,
+                'day_act_start': 8,
+                'day_act_end': 19,
+                'p_agents' : {'PoliceAgent' : 0.02,
+                                'Pickpocket' : 0.04,
+                                'Robber' : 0.04},
+            },
+            agents_params = {
+            'Resident': {"mean_resting_start_time": 21,
+                        "sd_resting_start_time": 2,
+                        "mean_resting_end_time": 7.5,
+                        "sd_resting_end_time": 0.83,},
+            'Worker':   {"mean_work_start_time": 8,
+                        "sd_work_start_time": 2,
+                        "min_work_start_time": 5,
+                        "mean_work_end_time": 18,
+                        "sd_work_end_time": 2,
+                        "max_work_end_time": 21,
+                        "mean_self_defence": 0.5,
+                        "sd_self_defence": 0.17,
+                        "p_information": 0.5},
+            'Criminal': {"opportunity_awareness" : 150,
+                        "crowd_effect": 0.01,
+                        "p_information": 1},
+            'Pickpocket' : {"act_decision_rule": "1/np.log10(distance) * yesterday_visits * run_visits * mean_income * (1/yesterday_police) * (1/run_police)"},
+            'Robber' : {"act_decision_rule" : "1/np.log10(distance) * (1/yesterday_visits) * (1/run_visits) * mean_income * (1/yesterday_police) * (1/run_police)"},
+            'PoliceAgent': {"act_decision_rule": ""}})
+     
+#def long_run(city):
+        
+            
+def sensitivity_analysis(city):
     for p_info_worker in np.arange(0.4, 1, 0.3):
         run(
             city = city, 
@@ -95,60 +158,60 @@ def multiple_runs():
             'PoliceAgent': {"p_information": 1}},
             )    
 
-        for crowd_effect in np.arange(0.01, 0.1, 0.03):
-            run(
-                city = city,
-                agents_params = {
-                'Resident': {"mean_resting_start_time": 21,
-                            "sd_resting_start_time": 2,
-                            "mean_resting_end_time": 7.5,
-                            "sd_resting_end_time": 0.83,},
-                'Worker':   {"mean_work_start_time": 8,
-                            "sd_work_start_time": 2,
-                            "min_work_start_time": 5,
-                            "mean_work_end_time": 18,
-                            "sd_work_end_time": 2,
-                            "max_work_end_time": 21,
-                            "mean_self_defence": 0.5,
-                            "sd_self_defence": 0.17,
-                            "p_information": 0.5},
-                'Criminal': {"opportunity_awareness" : 150,
-                            "crowd_effect": crowd_effect,
-                            "p_information": 1},
-                'Pickpocket' : {"act_decision_rule": "1/np.log10(distance) * yesterday_visits * run_visits * mean_income * (1/yesterday_police) * (1/run_police)"},
-                'Robber' : {"act_decision_rule" : "1/np.log10(distance) * (1/yesterday_visits) * (1/run_visits) * mean_income * (1/yesterday_police) * (1/run_police)"},
-                'PoliceAgent': {"p_information": 1}})
-    
-        for opportunity_awareness in np.arange(100, 300, 100):
-            run(
-                city = city,
-                agents_params = {
-                'Resident': {"mean_resting_start_time": 21,
-                            "sd_resting_start_time": 2,
-                            "mean_resting_end_time": 7.5,
-                            "sd_resting_end_time": 0.83,},
-                'Worker':   {"mean_work_start_time": 8,
-                            "sd_work_start_time": 2,
-                            "min_work_start_time": 5,
-                            "mean_work_end_time": 18,
-                            "sd_work_end_time": 2,
-                            "max_work_end_time": 21,
-                            "mean_self_defence": 0.5,
-                            "sd_self_defence": 0.17,
-                            "p_information": 0.5},
-                'Criminal': {"opportunity_awareness" : opportunity_awareness,
-                            "crowd_effect": 0.01,
-                            "p_information": 1},
-                'Pickpocket' : {"act_decision_rule": "1/np.log10(distance) * yesterday_visits * run_visits * mean_income * (1/yesterday_police) * (1/run_police)"},
-                'Robber' : {"act_decision_rule" : "1/np.log10(distance) * (1/yesterday_visits) * (1/run_visits) * mean_income * (1/yesterday_police) * (1/run_police)"},
-                'PoliceAgent': {"p_information": 1}})
-            
+    for crowd_effect in np.arange(0.01, 0.1, 0.03):
+        run(
+            city = city,
+            agents_params = {
+            'Resident': {"mean_resting_start_time": 21,
+                        "sd_resting_start_time": 2,
+                        "mean_resting_end_time": 7.5,
+                        "sd_resting_end_time": 0.83,},
+            'Worker':   {"mean_work_start_time": 8,
+                        "sd_work_start_time": 2,
+                        "min_work_start_time": 5,
+                        "mean_work_end_time": 18,
+                        "sd_work_end_time": 2,
+                        "max_work_end_time": 21,
+                        "mean_self_defence": 0.5,
+                        "sd_self_defence": 0.17,
+                        "p_information": 0.5},
+            'Criminal': {"opportunity_awareness" : 150,
+                        "crowd_effect": crowd_effect,
+                        "p_information": 1},
+            'Pickpocket' : {"act_decision_rule": "1/np.log10(distance) * yesterday_visits * run_visits * mean_income * (1/yesterday_police) * (1/run_police)"},
+            'Robber' : {"act_decision_rule" : "1/np.log10(distance) * (1/yesterday_visits) * (1/run_visits) * mean_income * (1/yesterday_police) * (1/run_police)"},
+            'PoliceAgent': {"p_information": 1}})
+
+    for opportunity_awareness in np.arange(100, 300, 100):
+        run(
+            city = city,
+            agents_params = {
+            'Resident': {"mean_resting_start_time": 21,
+                        "sd_resting_start_time": 2,
+                        "mean_resting_end_time": 7.5,
+                        "sd_resting_end_time": 0.83,},
+            'Worker':   {"mean_work_start_time": 8,
+                        "sd_work_start_time": 2,
+                        "min_work_start_time": 5,
+                        "mean_work_end_time": 18,
+                        "sd_work_end_time": 2,
+                        "max_work_end_time": 21,
+                        "mean_self_defence": 0.5,
+                        "sd_self_defence": 0.17,
+                        "p_information": 0.5},
+            'Criminal': {"opportunity_awareness" : opportunity_awareness,
+                        "crowd_effect": 0.01,
+                        "p_information": 1},
+            'Pickpocket' : {"act_decision_rule": "1/np.log10(distance) * yesterday_visits * run_visits * mean_income * (1/yesterday_police) * (1/run_police)"},
+            'Robber' : {"act_decision_rule" : "1/np.log10(distance) * (1/yesterday_visits) * (1/run_visits) * mean_income * (1/yesterday_police) * (1/run_police)"},
+            'PoliceAgent': {"p_information": 1}})
+        
     for p_pickpocket in np.arange(0.02, 0.15, 0.03):
         run(
             city = city,
             model_params = {
             'crs': "epsg:7791",
-            'days': 3,
+            'days': 31,
             'len_step': 15,  # minutes
             'start_datetime': dt.datetime(2020, 1, 1, 5, 30),
             'num_movers': 1000,
@@ -158,7 +221,7 @@ def multiple_runs():
                             'Pickpocket' : p_pickpocket,
                             'Robber' : 0.02},
             })
-    
+
     for p_robber in np.arange(0.02, 0.15, 0.03):
         run(
             city = city,
@@ -190,7 +253,7 @@ def multiple_runs():
                             'Pickpocket' : 0.04,
                             'Robber' : 0.02},
             })
-        
+          
 def load_files(start_datetime = dt.datetime(2020, 1, 1, 5, 30),
                files = {
                 "roads_file":  "data/processed/roads.gpkg",
