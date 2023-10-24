@@ -46,11 +46,37 @@ class InformedMover(Mover):
     StreetCrimeModel: src/model/model.py        
     """
     
-    params : dict[str, float] = {
-        "p_information" : 1
-    }
+    p_information : float = 1
 
-
+    def __init__(self,
+                 unique_id : int, 
+                 model : mesa.Model, 
+                 geometry : Point, 
+                 crs : pyproj.CRS,
+                 walking_speed : float = None,
+                 driving_speed : float= None,
+                 car_use_threshold : float = None,
+                 sd_activity_end : float = None,
+                 mean_activity_end : float = None,
+                 car : bool = None,
+                 act_decision_rule : str = None,
+                 p_information : float = None):
+        
+        super().__init__(unique_id, 
+                         model, 
+                         geometry, 
+                         crs, 
+                         walking_speed, 
+                         driving_speed, 
+                         car_use_threshold, 
+                         sd_activity_end, 
+                         mean_activity_end,
+                         car,
+                         act_decision_rule)
+        
+        if p_information is not None:
+            self.p_information = p_information
+            
     def update_info(self, info_type : str = None) -> None:
         """Gets a random sample of `p = Mover.p_information` of the previous day information from the `Mover.model.data[f'{info_type}']` dataframe, 
         groups it by neighborhood and updates the `Mover.data['info_neighborhoods']` dataframe.
@@ -66,26 +92,24 @@ class InformedMover(Mover):
         
         """
         #If p_information = 1, the data is the same as the model data
-        if self.params['p_information'] == 1:
-            self.model.data['info_neighborhoods'] = self.model.data['info_neighborhoods']
-            complete_info = self.model.data['info_neighborhoods'].xs(0)
-            self.model.data['info_neighborhoods'].loc[self.unique_id].update(complete_info)
-            self.model.data['info_neighborhoods'] = self.model.data['info_neighborhoods'].astype(pd.SparseDtype(float, np.nan))
+        if self.p_information  == 1:
+            pass
         else:
-            yesterday = self.model.data['datetime'].replace(day = self.model.data['datetime'].day - 1)
+            
+            yesterday = self.model.datetime.replace(day = self.model.datetime.day - 1)
             yesterday = yesterday.date()
             try:
                 yesterday_data = self.model.data[f'{info_type}'][self.model.data[f'{info_type}']['date'] == yesterday]
-                known_data = yesterday_data.sample(frac = self.params['p_information'])
+                known_data = yesterday_data.sample(frac = self.p_information)
                 data_per_neighborhood = known_data['neighborhood'].value_counts()
                 for neighborhood, data in data_per_neighborhood.items():
-                    self.data['info_neighborhoods'].loc[self.unique_id, neighborhood, f'yesterday_{info_type}'] = data
-                    self.model.data['info_neighborhoods'].loc[self.unique_id, neighborhood, f'run_{info_type}'] += data
+                    self.model.info_neighborhoods.loc[self.unique_id, neighborhood, f'yesterday_{info_type}'] = data
+                    self.model.info_neighborhoods.loc[self.unique_id, neighborhood, f'run_{info_type}'] += data
             except KeyError:
-                self.model.data['info_neighborhoods'] = self.model.data['info_neighborhoods'].astype(float)
-                complete_info = self.model.data['info_neighborhoods'].xs(0)
-                self.model.data['info_neighborhoods'].loc[self.unique_id].update(complete_info)
-                self.model.data['info_neighborhoods'] = self.model.data['info_neighborhoods'].astype(pd.SparseDtype(float, np.nan))
+                self.model.info_neighborhoods = self.model.info_neighborhoods.astype(float)
+                complete_info = self.model.info_neighborhoods.xs(0)
+                self.model.info_neighborhoods.loc[self.unique_id].update(complete_info)
+                self.model.info_neighborhoods = self.model.info_neighborhoods.astype(pd.SparseDtype(float, np.nan))
 
     
     
