@@ -5,9 +5,9 @@ from src.agents.resident import Resident
 from src.agents.worker import Worker
 from src.agents.police_agent import PoliceAgent
 from datetime import timedelta
-from mesa import Model
+import mesa
+import pyproj
 from shapely.geometry import Point
-from pyproj import CRS
 import numpy as np
 
 class Criminal(Resident):
@@ -67,41 +67,92 @@ class Criminal(Resident):
     StreetCrimeModel: src/model/model.py
 
     """
-    attributes : dict[str or int or list(int) or float] = {
-        'crime_motivation' : None,
-        }
     
-    params: dict[str, float] = {
-        "opportunity_awareness": 150,
-        "crowd_effect": 0.01,
-        "p_information": 1 
-        } 
+    '''TODO: add crime_motivation
+            elif attribute_name == "crime_motivation":
+                attribute_value = 1 - self.model.space.neighborhoods['city_income_distribution'].iloc[0].cdf(self.income) + np.random.normal(0, 0.10)
+                while attribute_value < 0 or attribute_value > 1:
+                    attribute_value = 1 - self.model.space.neighborhoods['city_income_distribution'].iloc[0].cdf(self.income) + np.random.normal(0, 0.10)
+                return attribute_value'''
+    opportunity_awareness : int = 150
+    crowd_effect : float = 0.01
+    p_information : float = 1
+    home_decision_rule : str = "neighborhoods, weights = df.prop * (1/df.mean_income)"
     
-    def __init__(self, unique_id: int, model: Model, geometry: Point, crs: CRS) -> None:
-        super().__init__(unique_id, model, geometry, crs)
-        self.data['crime_motivation'] = self._gen_attribute('crime_motivation')
+    
+    def __init__(self, 
+                 unique_id: int, 
+                 model: mesa.Model, 
+                 geometry: Point, 
+                 crs: pyproj.CRS,
+                 walking_speed : float = None,
+                 driving_speed : float= None,
+                 car_use_threshold : float = None,
+                 sd_activity_end : float = None,
+                 mean_activity_end : float = None,
+                 car : bool = None,
+                 act_decision_rule : str = None,
+                 p_information : float = None,
+                 mean_resting_start_time : float = None,
+                 sd_resting_start_time : float = None,
+                 mean_resting_end_time : float = None,
+                 sd_resting_end_time : float = None,
+                 car_income_threshold : float = None,
+                 home_decision_rule : str = None,
+                 limits_resting_start_time : list[float] = None,
+                 limits_resting_end_time : list[float] = None,
+                 opporunity_awareness = None, 
+                 crowd_effect = None) -> None:
+        
+        super().__init__(unique_id, 
+                    model, 
+                    geometry, 
+                    crs, 
+                    walking_speed, 
+                    driving_speed, 
+                    car_use_threshold, 
+                    sd_activity_end, 
+                    mean_activity_end,
+                    car,
+                    act_decision_rule,
+                    p_information,
+                    mean_resting_start_time,
+                    sd_resting_start_time,
+                    mean_resting_end_time,
+                    sd_resting_end_time,
+                    car_income_threshold,
+                    home_decision_rule,
+                    limits_resting_start_time,
+                    limits_resting_end_time)
+
+        if opporunity_awareness is not None:
+            self.opportunity_awareness = opporunity_awareness
+        if crowd_effect is not None:
+            self.crowd_effect = crowd_effect
+        
+        self.crime_motivation = self._gen_crime_motivation()
     
     def step(self) -> None:
         """The step method of the Criminal. It checks if the Criminal can commit a crime and if so, it commits one."""
-        if (self.model.data['datetime'].day > 1 
-            and self.model.data['datetime'].hour == 0 
-            and self.model.data['datetime'].minute == 0):
+        #Update informations
+        if (self.model.datetime.day > 1 
+            and self.model.datetime.hour == 0 
+            and self.model.datetime.minute == 0):
             self.update_info('visits')
-        if self.data['status'] == "transport":
+        #Commit crime
+        if self.status == "transport":
             self.commit_crime()
         super().step()
 
     def commit_crime(self) -> None:
         """Checks for crime opportunities in the vicinity and commits one if conditions permit."""
-        gen_close_agents = self.model.space.get_neighbors_within_distance(self, distance = self.params['opportunity_awareness']) #Meters for which the criminal can commit a crime
-        close_agents = [agent for agent in gen_close_agents if isinstance(agent, Worker)] #Only workers can be victims
-        possible_victims = [agent for agent in close_agents if (agent.data['status'] == "transport") 
-                                    and isinstance(agent, Worker)]
+        close_agents = list(self.model.space.get_neighbors_within_distance(self, distance = self.opportunity_awareness)) #Meters for which the criminal can commit a crime
+        possible_victims = [agent for agent in close_agents if (agent.status == "transport") and isinstance(agent, Worker)]
         if len(possible_victims) > 0:
             crime = {
-                    'step': self.model.data['step_counter'],
-                    'datetime' : self.model.data['datetime'],
-                    'date' : self.model.data['datetime'].date(),
+                    'step': self.model.step,
+                    'datetime' : self.model.datetime,
+                    'date' : self.model.datetime.date(),
                     'position' : self.geometry,
                     'neighborhood' : self.model.space.find_neighborhood_by_pos(self.geometry),
                     'criminal' : self.unique_id,
@@ -119,52 +170,56 @@ class Criminal(Resident):
             if len(police) > 0: #Awareness of police in the vicinity
                 neighborhood_id = [self.model.space.find_neighborhood_by_pos(police[0].geometry)]
                 if neighborhood_id is not None:
-                    self.model.data['info_neighborhoods'].loc[:, ['yesterday_police', 'run_police']] = self.model.data['info_neighborhoods'].loc[:, ['yesterday_police', 'run_police']].astype(float)
-                    self.model.data['info_neighborhoods'].at[(self.unique_id, neighborhood_id), 'yesterday_police'] += 1
-                    self.model.data['info_neighborhoods'].at[(self.unique_id, neighborhood_id), 'run_police'] += 1
-                    self.model.data['info_neighborhoods'].loc[:, ['yesterday_police', 'run_police']] = self.model.data['info_neighborhoods'].loc[:, ['yesterday_police', 'run_police']].astype(pd.SparseDtype(float, np.nan))
+                    #TODO: has to be changed
+                    #self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']] = self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']].astype(float)
+                    #self.model.info_neighborhoods.at[(self.unique_id, neighborhood_id), 'yesterday_police'] += 1
+                    #self.model.info_neighborhoods.at[(self.unique_id, neighborhood_id), 'run_police'] += 1
+                    #self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']] = self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']].astype(pd.SparseDtype(float, np.nan))
+                    pass
                 crime['prevented'] = True
             else:
                 if len(possible_victims) > 0:
-                    possible_victims = sorted(possible_victims, key = lambda x: x.data['crime_attractiveness'])
+                    possible_victims = sorted(possible_victims, key = lambda x: x.crime_attractiveness, reverse = True)
                     victim = possible_victims[0]
                     crime['victim'] = victim.unique_id
-                    if self.data['crime_motivation'] < victim.data['crime_attractiveness']:
-                        return
                     neighborhood_id = self.model.space.find_neighborhood_by_pos(victim.geometry)
                     #If the motivation is higher than the crowd deterrance
                     if isinstance(self, Pickpocket):
-                        if (self.data['crime_motivation'] + self.params['crowd_effect']*(len(possible_victims)-1) + random.gauss(0, 0.05)) >= np.random.uniform(0, 1):
+                        if (self.crime_motivation + self.crowd_effect*(len(possible_victims)-1) + random.gauss(0, 0.05)) >= np.random.uniform(0, 1):
                             crime['successful'] = True
                         else:
                             crime['successful'] = False
                     elif isinstance(self, Robber):
-                        if ((self.data['crime_motivation'] - self.params['crowd_effect']*(len(possible_victims)-1) + random.gauss(0, 0.05)) >= (np.random.uniform(0, 1))) and (self.data['crime_motivation'] >= victim.data['self_defence']):
+                        if ((self.crime_motivation - self.crowd_effect*(len(possible_victims)-1) + random.gauss(0, 0.05)) >= (np.random.uniform(0, 1))) and (self.crime_motivation >= victim.defence):
                             crime['successful'] = True
                         else:
                             crime['successful'] = False
-                    crime = gpd.GeoDataFrame(crime, index = [0])
-                    self.model.data['crimes'] = pd.concat([self.model.data['crimes'], crime], 
-                                                        ignore_index = True)
-                    today = str(self.model.data['datetime'].date())
-                    column = today + '_crimes'
-                    #TODO: This function for both space and movers should be merged in one
-                    try:
-                        self.model.data['info_neighborhoods'].loc[:, column] = self.model.data['info_neighborhoods'].loc[:, column].astype(float)
-                        self.model.data['info_neighborhoods'].at[(0, neighborhood_id), column] += 1
-                        self.model.data['info_neighborhoods'].loc[:, column] = self.model.data['info_neighborhoods'].loc[:, column].astype(pd.SparseDtype(float, np.nan))
-                    except KeyError:
-                        self.model.data['info_neighborhoods'].loc[:, column] = self.model.data['info_neighborhoods'].loc[:, column].astype(float)
-                        self.model.data['info_neighborhoods'][column] = 1
-                        self.model.data['info_neighborhoods'].at[(0, neighborhood_id), column] += 1
-                        self.model.data['info_neighborhoods'].loc[:, column] = self.model.data['info_neighborhoods'].loc[:, column].astype(pd.SparseDtype(float, np.nan))
+                crime = gpd.GeoDataFrame(crime, index = [0])
+                self.model.crimes = pd.concat([self.model.crimes, crime], 
+                                              ignore_index = True)
+                today = str(self.model.datetime.date())
+                column = today + '_crimes'
+                #TODO: This function for both space and movers should be merged in one
+                try:
+                    #self.model.info_neighborhoods.loc[:, column] = self.model.info_neighborhoods.loc[:, column].astype(float)
+                    #self.model.info_neighborhoods.at[(0, neighborhood_id), column] += 1
+                    #self.model.info_neighborhoods.loc[:, column] = self.model.info_neighborhoods.loc[:, column].astype(pd.SparseDtype(float, np.nan))
+                    pass
+                except KeyError:
+                    #self.model.info_neighborhoods.loc[:, column] = self.model.info_neighborhoods.loc[:, column].astype(float)
+                    #self.model.info_neighborhoods[column] = 1
+                    #self.model.info_neighborhoods.at[(0, neighborhood_id), column] += 1
+                    #self.model.info_neighborhoods.loc[:, column] = self.model.info_neighborhoods.loc[:, column].astype(pd.SparseDtype(float, np.nan))
+                    pass
+
+    def _gen_crime_motivation(self) -> float:
+        crime_motivation = 1 - self.model.space.income_distribution.cdf(self.income) + np.random.normal(0, 0.10)
+        while crime_motivation < 0 or crime_motivation > 1:
+            crime_motivation =  1 - self.model.space.income_distribution.cdf(self.income) + np.random.normal(0, 0.10)
+        return crime_motivation
 
 class Pickpocket(Criminal):
-    params = {
-        "act_decision_rule": "1/distance * yesterday_visits * run_visits * mean_income * (1/yesterday_police) * (1/run_police)"
-    }
+    act_decision_rule : str = "buildings, weights = (1/df.geometry.distance(agent.geometry)) * df.yesterday_visits * df.run_visits * df.mean_income * (1/df.yesterday_police) * (1/df.run_police)"
     
 class Robber(Criminal):
-    params = {
-        "act_decision_rule": "1/distance * (1/yesterday_visits) * (1/run_visits) * mean_income * (1/yesterday_police) * (1/run_police)"
-    }
+    act_decision_rule : str = "buildings, weights = (1/df.geometry.distance(agent.geometry)) * (1/df.yesterday_visits) * (1/df.run_visits) * df.mean_income * (1/df.yesterday_police) * (1/df.run_police)"

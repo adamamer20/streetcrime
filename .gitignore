@@ -133,4 +133,9 @@ __blobstorage__
 __queuestorage__
 __azurite_db*__.json
 .python_packages
+
+#My files
 data/raw/bus.geojson
+.vscode
+
+
