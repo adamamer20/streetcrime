@@ -1,6 +1,6 @@
 import unittest
-from src.model import StreetCrime
-from src.space.city import City
+from streetcrime.model import StreetCrime
+from streetcrime.space.city import City
 
 class TestModel(unittest.TestCase):
     def test_model_init(self):

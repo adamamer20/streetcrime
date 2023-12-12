@@ -1,7 +1,7 @@
 import unittest
 import geopandas as gpd
 import osmnx as ox
-from src.space.city import City
+from streetcrime.space.city import City
 
 class TestCity(unittest.TestCase):
     '''def test_obtaining_roads(self):

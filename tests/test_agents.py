@@ -1,15 +1,15 @@
 import unittest
 import geopandas as gpd
 import osmnx as ox
-from src.model import StreetCrime
+from streetcrime.model import StreetCrime
 
-from src.space.city import City
-from src.agents.mover import Mover
-from src.agents.informed_mover import InformedMover
-from src.agents.resident import Resident
-from src.agents.criminal import Pickpocket, Robber
-from src.agents.worker import Worker
-from src.agents.police_agent import PoliceAgent
+from streetcrime.space.city import City
+from streetcrime.agents.mover import Mover
+from streetcrime.agents.informed_mover import InformedMover
+from streetcrime.agents.resident import Resident
+from streetcrime.agents.criminal import Pickpocket, Robber
+from streetcrime.agents.worker import Worker
+from streetcrime.agents.police_agent import PoliceAgent
 import numpy as np
 
 from datetime import datetime, timedelta
