@@ -1,11 +1,10 @@
 from datetime import datetime, timedelta
 import geopandas as gpd
 import numpy as np
-import mesa 
-import mesa_geo as mg
 import shapely
 from shapely.geometry import Point
 import os.path
+from mesa_frames.space import GeoSpace
 from streetcrime.agents.mover import Mover
 from streetcrime.agents.worker import Worker
 from streetcrime.agents.criminal import Criminal
@@ -22,8 +21,11 @@ from ast import literal_eval
 import pandas as pd
 from scipy.stats import skewnorm
 import time # To measure the time of the loading of the files
+import overpy
+from pyproj import CRS
+from mesa_frames.agent import Agent
 
-class City(mg.GeoSpace):
+class City(GeoSpace):
     """
     The City class is the GeoSpace in which agents move.
     It is used to store the road & public transport network, the buildings and neighborhoods dataframes.
@@ -44,7 +46,7 @@ class City(mg.GeoSpace):
         
     Methods:
     ----------
-        obtaining_roads(out_file : str, tolerance : int = 20, traffic_factor : int = 1) -> nx.MultiDiGraph
+        _obtain_roads(out_file : str, tolerance : int = 20, traffic_factor : int = 1) -> nx.MultiDiGraph
             It reads a .gpkg or .graphml file specified in `out_file` or obtains the road network from `osmnx.graph_from_place`
         get_random_building(agent : agent, function : str) -> int
             Returns a random building id based on the function passed as argument
@@ -58,70 +60,133 @@ class City(mg.GeoSpace):
     """
     
     def __init__(self, 
-                crs: str,
-                city_name : str = None,
-                **layers : str) -> None:
+                 crs: CRS,
+                 city_name : str,
+                 **layers : str) -> None:
         """
-            Arguments:
+            Parameters:
+
             crs(str)
-                The crs of the city
-            roads(networkx.MultiDiGraph, optional)
-                The road network of the city. Will be converted to a RoadNetwork object (see streetcrime/space/roads)
-            neighborhoods(gpd.GeoDataFrame, optional)
-                The neighborhoods dataframe of the city
-            buildings_df(gpd.GeoDataFrame, optional)
-                The buildings dataframe of the city
+                The crs of the city. Should be a projected crs and not a geographic one. 
         """
-        city_time = time.time()
+            
         super().__init__(crs=crs)
         self.city_name = city_name
-        print("Loading city : ...")
-        for layer, arg in layers.items():
-            if os.path.isfile(arg):
-                layer_time = time.time()
-                print(f"Loading {layer} from {arg}")
-                match layer:
-                    case "roads" | "public_transport":
-                        if ".gpkg" in arg:
-                            setattr(self, f'{layer}_nodes', gpd.read_file(arg, layer = 'nodes').set_index('osmid'))
-                            setattr(self, f'{layer}_edges', gpd.read_file(arg, layer = 'edges').set_index(['u', 'v', 'key']))
-                            setattr(self, layer, ox.graph_from_gdfs(getattr(self, f'{layer}_nodes'), getattr(self, f'{layer}_edges'))) 
-                        elif '.graphml' in arg:
-                            setattr(self, layer, ox.load_graphml(arg))
-                    case "public_transport":
-                        self.public_transport = ox.load_graphml(arg)
-                    case "buildings":
-                        self.buildings = gpd.read_file(arg).rename(columns = {'neighborho': 'neighborhood'}).set_index('id')
-                    case "neighborhoods":
-                        self.neighborhoods = gpd.read_file(arg).set_index('id')
-                        self.income_distribution = skewnorm(a = self.neighborhoods['city_ae'].iloc[0], 
-                                                            loc = self.neighborhoods['city_loce'].iloc[0], 
-                                                            scale = self.neighborhoods['city_scalee'].iloc[0]) 
-                        self.neighborhoods.drop(columns = ['city_ae', 'city_loce', 'city_scalee'], inplace = True)
-                    case _:
-                        setattr(self, layer, gpd.read_file(arg))
-                print(f"Loaded {layer}: " + "--- %s seconds ---" % (time.time() - layer_time))
-            else:
-                setattr(self, layer, _method_parser(self, arg))
-        
-        self._load_cache_files(['roads', 'public_transport'])
-        print("Loaded city: " + "--- %s seconds ---" % (time.time() - city_time))
+        self.roads_nodes = None
+        self.roads_edges = None
+        self.roads = None
 
-    def obtaining_roads(self,
-                        out_file: str,
-                        tolerance : int = 20,
-                        traffic_factor : int = 1, 
-                        ) -> nx.MultiDiGraph:
-        """It reads a .gpkg or .graphml file specified in `out_file` or obtains the road network from `osmnx.graph_from_place`.
+        # Read paths files
+        if os.path.isfile(f"outputs/city/{self.city_name.split(',')[0]}_paths.csv"):
+            self.paths = pd.read_csv(f"outputs/city/{self.city_name.split(',')[0]}_paths.csv")
+            #need to read strings as list types for .explode(), faster than using ast.literal_eval
+            self.paths.path = self.paths.path.str.strip('[]').str.split(', ')
+        else:
+            self.paths = pd.DataFrame(columns = ['node', 'destination', 'path'])
+            
+        # If additonal layers are specified
+        if len(layers) > 0:
+            print("Loading layers : ...")
+            for layer, arg in layers.items():
+                if os.path.isfile(arg):
+                    layer_time = time.time()
+                    print(f"Loading {layer} from {arg}")
+                    match layer:
+                        case "neighborhoods":
+                            self.neighborhoods = gpd.read_file(arg).set_index('id')
+                            self.income_distribution = skewnorm(a = self.neighborhoods['city_ae'].iloc[0], 
+                                                                loc = self.neighborhoods['city_loce'].iloc[0], 
+                                                                scale = self.neighborhoods['city_scalee'].iloc[0]) 
+                            self.neighborhoods.drop(columns = ['city_ae', 'city_loce', 'city_scalee'], inplace = True)
+                        case _:
+                            setattr(self, layer, gpd.read_file(arg))
+                    print(f"Loaded {layer}: " + "--- %s seconds ---" % (time.time() - layer_time))
+                else:
+                    setattr(self, layer, _method_parser(self, arg))
+        
+        
+    #TODO: remove nodes without outgoing edges
+    def load_data(self,
+                  tolerance : int = 15,
+                  traffic_factor : int = 1,
+                  roads_file : str = None, #TODO: specify default value
+                  buildings_file : str = None,
+                  building_categories : pd.DataFrame = None) -> None:
+        """Obtains the data of the city from OSMNX and saves it in the specified files
+        or reads data from the file passed as arguments"""
+
+        #Check parameters
+        if not 0 < traffic_factor  <= 1:
+            raise ValueError(f"Traffic factor set to {traffic_factor}. Should be between 0 and 1")
+        if tolerance <= 0:
+            raise ValueError(f"Tolerance set to {tolerance}. Should be greater than 0")
+        if not os.path.isdir("outputs"):
+            os.mkdir("outputs")
+        if roads_file:
+            roads_file = f"outputs/city/{roads_file}"
+        else:
+            roads_file = f"outputs/city/{self.city_name.split(',')[0]}_roads.gpkg"
+            
+        #Obtain roads
+        if os.path.isfile(roads_file):
+            print(f"Roads already downloaded in {roads_file}. Loading...")
+            if ".gpkg" in roads_file:
+                #TODO: remove useless columns
+                self.roads_nodes = gpd.read_file(roads_file, layer = 'nodes').set_index('osmid')
+                self.roads_edges = gpd.read_file(roads_file, layer = 'edges').set_index(['u', 'v', 'key'])
+                self.roads = nx.DiGraph(ox.graph_from_gdfs(self.roads_nodes, self.roads_edges))                
+                self.roads_edges = self.roads_edges.sort_values('travel_time').reset_index().drop(columns = ['key']).groupby(['u', 'v']).first()
+                return
+            
+        roads = self._obtain_roads(tolerance, traffic_factor)
+        
+        #Obtain buildings
+        buildings = self._obtain_buildings(buildings_file, building_categories)
+        buildings['nearest_node'] = buildings.geometry.apply(lambda x: ox.nearest_nodes(roads, x.centroid.x, x.centroid.y))
+        buildings = buildings.groupby('nearest_node').count()
+        buildings = buildings[['home', 'work', 'activity', 'open_day', 'open_night']]
+        nx.set_node_attributes(roads, buildings.transpose().to_dict())
+        self.roads_nodes = ox.graph_to_gdfs(roads, nodes=True, edges=False)
+        ox.save_graph_geopackage(roads, filepath = roads_file, directed = True)
+        print(f"Saved roads in {roads_file}")
+        self.roads = nx.DiGraph(roads)
+        
+        #Compute all pairs shortest path (faster than lazy computation at each iteration)
+        
+    
+    def get_random_nodes(self, 
+                        function: str = None,
+                        time: str = None,
+                        agent : Agent = None, 
+                        decision_rule : str = None,
+                        n = 1) -> int:
+                
+        weights = None
+        
+        if function and time: 
+            weights = self.roads_nodes[function]*self.roads_nodes[time]
+        elif function:
+            weights = self.roads_nodes[function]
+        
+        #if decision_rule:
+        #    node = self.roads_nodes.sample(n = n)
+
+        if n == 1:
+            return self.roads_nodes.sample(n = 1, weights = weights).index[0]
+        else:  
+            return self.roads_nodes.sample(n = n, weights = weights, replace = True).index
+                        
+    def _obtain_roads(self,
+                      tolerance : int = 15,
+                      traffic_factor : int = 1) -> nx.MultiDiGraph:
+        """Download roads using `osmnx.graph_from_place`
 
         Parameters
         ----------
-        out_file : str
-            Final location of the downloaded roads. If a file is already present, it will be loaded.
-        tolerance : int, default = 20
-            The tolerance according to which intersectation are consolidated with `osmnx.simplification.consolidate_intersections`.¡
+        tolerance : int, default = 15
+            The tolerance according to which intersectation are consolidated with `osmnx.simplification.consolidate_intersections`.
         traffic_factor : int, default = 1
-            The factor with which speeds will be refactored. If not specified, not used.
+            The factor with which speeds will be refactored. If not specified, velocities will be set to max speed per road.
 
 
         Returns
@@ -137,51 +202,130 @@ class City(mg.GeoSpace):
             If `self.city_name` is not specified and file in `out_file` is not present
         """
         start_time = time.time()
-        
-    #Check parameters validity
-        if traffic_factor > 1:
-            warn(f"Traffic factor set to {traffic_factor}. Should be less than 1")
-        if not ((".graphml" in out_file) | (".gpkg" in out_file)):
-            raise NameError("out_file should end in .gpkg or .graphml")   
-        if os.path.isfile(out_file):
-            print(f"Roads already downloaded in {out_file}. Loading...")
-            if ".gpkg" in out_file:
-                            roads_nodes = gpd.read_file(out_file, layer = 'nodes').set_index('osmid')
-                            roads_edges = gpd.read_file(out_file, layer = 'edges').set_index(['u', 'v', 'key'])
-                            roads = ox.graph_from_gdfs(roads_nodes, roads_edges)
-            else:
-                roads = ox.load_graphml(out_file)
-        else:  
-            # Downloading the full dataset of roads
-            roads = ox.graph_from_place(self.city_name)  # simplifaction is already activated
-            if not self.crs:
-                roads = ox.projection.project_graph(roads, to_crs=self.crs)
+        print(f"Downloading roads of {self.city_name}...")
+                    
+        # Downloading the full dataset of roads
+        roads = ox.graph_from_place(self.city_name)  # simplification is already activated
+        roads = ox.projection.project_graph(roads, to_crs=self.crs)
+            
+        if tolerance > 0:
             roads = ox.simplification.consolidate_intersections(roads, tolerance=tolerance)
-            roads = ox.speed.add_edge_speeds(roads)
-            edges = ox.graph_to_gdfs(roads, nodes=False, edges=True)
-            if not traffic_factor == 1:
-                edges["speed_kph"] = edges["speed_kph"]*traffic_factor
-                edges["attributes_dict"] = "{'speed_kph': " + edges["speed_kph"].astype(str) + "}"
-                edges["attributes_dict"] = edges["attributes_dict"].apply(literal_eval)
-                attributes_dict = edges["attributes_dict"].to_dict()
-                nx.set_edge_attributes(roads, attributes_dict)
-            roads = ox.speed.add_edge_travel_times(roads)
-            if ".graphml" in out_file:
-                ox.io.save_graphml(roads, filepath=out_file)
-            elif ".gpkg" in out_file:
-                ox.io.save_graph_geopackage(roads, filepath = out_file, directed = True)
+
+        roads = ox.speed.add_edge_speeds(roads)
+        nodes, edges = ox.graph_to_gdfs(roads, nodes=True, edges=True)
         
-            print("Loaded roads: " + "--- %s seconds ---" % (time.time() - start_time))
+        # Calculate the speed of each edge
+        if traffic_factor != 1:
+            edges["speed_kph"] = edges["speed_kph"]*traffic_factor
+            roads = ox.graph_from_gdfs(nodes, edges)
+        
+        # Add travel times
+        roads = ox.speed.add_edge_travel_times(roads)
+
+        #Remove nodes without outgoing edges
+        out_degree = pd.Series(dict(roads.out_degree))
+        roads.remove_nodes_from(out_degree[out_degree == 0].index)
+
+        # Find all pairs shortest paths (faster than lazy computation at each iteration)
+        paths = dict(nx.all_pairs_dijkstra_path(roads, weight = 'travel_time'))
+        data = []
+        # Iterate through the nested dictionary
+        for origin, destinations in paths.items():
+            for destination, path in destinations.items():
+                # Append a tuple with the origin, destination, and path to the list
+                data.append((origin, destination, path))
+        paths = pd.DataFrame(data, columns=['node', 'destination', 'path'])
+        paths.astype({'node': 'int64', 'destination': 'float64'})
+        paths.to_csv(f"outputs/city/{self.city_name.split(',')[0]}_paths.csv", index = False)
+        self.paths = paths
+
+        print("Downloaded roads: " + "--- %s seconds ---" % (time.time() - start_time))
         return roads
     
-    #TODO: implement buildings retrieval with osmnx
-    def obtaining_buildings(self):
-        ox.features.features_from_place(self.city_name, tags=None, which_result=None, buffer_dist=None)
+    def _obtain_buildings(self, buildings_file: str = None, building_categories : pd.DataFrame = None) -> gpd.GeoDataFrame:
+        start_time = time.time()
+        
+        if buildings_file:
+            buildings_file = f"outputs/{buildings_file}"
+        else:
+            buildings_file = f"outputs/{self.city_name.split(',')[0]}_buildings.gpkg"
 
-    #TODO: implement public transport retrieval without passing to overpass turbo
+        print(f"Downloading buildings of {self.city_name}...")
+        buildings = ox.features_from_place(self.city_name, 
+                                           tags = {'building': True})
+        print('Downloaded buildings: ' + "--- %s seconds ---" % (time.time() - start_time))
+        buildings.to_crs(self.crs, inplace = True)
+        buildings.reset_index(inplace = True)
+        buildings = buildings[['geometry', 'building']]
+        #categorize buildings
+        if not building_categories:
+            building_categories = [
+                ["apartments", True, None, None, True, None],
+                ["barracks", True, None, None, True, None],
+                ["bungalow", True, None, None, True, True],
+                ["cabin", True, None, True, True, True],
+                ["detached", True, None, None, True, True],
+                ["dormitory", True, None, None, True, True],
+                ["farm", True, True, None, True, True],
+                ["ger", True, None, None, True, True],
+                ["hotel", None, True, True, True, True],
+                ["house", True, None, None, True, True],
+                ["houseboat", True, None, True, True, True],
+                ["residential", True, None, None, True, True],
+                ["semidetached_house", True, None, None, True, True],
+                ["static_caravan", True, None, None, True, True],
+                ["stilt_house", True, None, True, True, True],
+                ["terrace", True, None, None, True, True],
+                ["tree_house", True, None, True, True, None],
+                ["trullo", True, None, None, True, True],
+                ["commercial", None, True, True, True, None],
+                ["industrial", None, True, None, True, None],
+                ["kiosk", None, True, True, True, True],
+                ["office", None, True, None, True, None],
+                ["retail", None, True, True, True, True],
+                ["supermarket", None, True, True, True, True],
+                ["warehouse", None, True, None, True, None],
+                ["church", None, True, True, True, None],
+                ["mosque", None, True, True, True, None],
+                ["synagogue", None, True, True, True, None],
+                ["temple", None, True, True, True, None],
+                ["school", None, True, None, True, None],
+                ["university", None, True, None, True, None],
+                ["hospital", None, True, True, True, True],
+                ["fire_station", None, True, None, True, True],
+                ["government", None, True, None, True, None],
+                ["yes", True, True, True, True, True]
+            ]
+            columns = ["building", "home", "work", "activity", "open_day", "open_night"]
+            building_categories = pd.DataFrame(building_categories, columns=columns)
+        buildings = buildings.merge(building_categories, on = 'building', how = 'left')
+        if buildings_file:
+            buildings.to_file(buildings_file)
+            print(f"Saved buildings in {buildings_file}")
+        return buildings
+              
+    #TODO: implement public transport retrieval without passing through overpass turbo
     def obtaining_public_transport(self):
-        pass
-            
+        # Load JSON data from Overpass API
+        data = json.load(your_json_data)
+
+        # Process relations
+        for relation in data['elements']:
+            if relation['type'] == 'relation':
+                # Initialize an empty list to store line strings
+                line_strings = []
+                for member in relation['members']:
+                    if member['type'] == 'way':
+                        points = [(node['lon'], node['lat']) for node in member['geometry']]
+                        line_strings.append(LineString(points))
+
+                # Combine line strings into a single geometry
+                # This could be a MultiLineString or another appropriate geometry type
+                relation_geometry = combine_line_strings(line_strings)
+
+                # Do something with the relation geometry
+
+    ''' deprecated by get_random_nodes()
     def get_random_building(self, 
                             function: str = None,
                             agent : mesa.Agent = None,
@@ -206,9 +350,10 @@ class City(mg.GeoSpace):
                 _building = self.buildings[self.buildings['home'] == 1].sample(n = 1)
             else:
                 _building = self.buildings[self.buildings[function] == 1].sample(n=1, weights=weights)
-        return _building.index[0]
+        return _building.index[0]'''
 
-    def find_neighborhood_by_pos(self, position: Point) -> int:
+    ''' #TODO: implement with DF
+      def find_neighborhood_by_pos(self, position: Point) -> int:
         """Find the neighborhood in which the position passed as argument is contained
 
         Parameters:
@@ -225,44 +370,47 @@ class City(mg.GeoSpace):
         except IndexError:
             warn(f"Position {position} is not contained in any neighborhood", RuntimeWarning)
             index = None
-        return index
+        return index'''
 
-    def cache_path(
+    ''' #TODO: ditch paths altogether?
+    def paths_path(
         self,
         network : str,
         source_node: int,
         target_node: int,
         path: list[int],
     ) -> None:
-        #print(f"caching path... current number of cached paths: {len(self._path_cache)}")
-        cache = getattr(self, f"_cache_{network}")
-        cache[(source_node, target_node)] = path      
+        #print(f"caching path... current number of pathsd paths: {len(self._path_paths)}")
+        paths = getattr(self, f"_paths_{network}")
+        paths[(source_node, target_node)] = path      
 
-    def get_cached_path(
+    def get_pathsd_path(
         self, 
         network: str,
         source_node: int,
         target_node: int
     ) -> list[int]:
-        cache = getattr(self, f"_cache_{network}")
-        return cache.get((source_node, target_node), None)
+        paths = getattr(self, f"_paths_{network}")
+        return paths.get((source_node, target_node), None)
     
-    def _load_cache_files(self, layers : list[str]) -> None:
+    def _load_paths_files(self, layers : list[str]) -> None:
         for layer in layers:
             try:
-                with open(f"/outputs/_cache/_cache_{layer}.pkl", "rb") as cache_file: 
-                    setattr(self, f"_cache_{layer}", pickle.load(cache_file))
+                with open(f"/outputs/_paths/_paths_{layer}.pkl", "rb") as paths_file: 
+                    setattr(self, f"_paths_{layer}", pickle.load(paths_file))
             except (FileNotFoundError, EOFError):
-                setattr(self, f"_cache_{layer}", dict())
-                warn(f"/outputs/_cache/_cache_{layer}.pkl not found, creating a new file", RuntimeWarning)
+                setattr(self, f"_paths_{layer}", dict())
+                warn(f"/outputs/_paths/_paths_{layer}.pkl not found, creating a new file", RuntimeWarning)
 
-    def save_cache_files(self, layers : list[str]) -> None:
+    def save_paths_files(self, layers : list[str]) -> None:
         for layer in layers:
-            with open(f"/outputs/_cache/_cache_{layer}.pkl", "wb") as cache_file:
-                pickle.dump(getattr(self, f"_cache_{layer}"), cache_file)
+            with open(f"/outputs/_paths/_paths_{layer}.pkl", "wb") as paths_file:
+                pickle.dump(getattr(self, f"_paths_{layer}"), paths_file)'''
     
+    '''#TODO: deprecated by current implementation
     def _weights_parser(self, agent: mesa.Agent, decision_rule : str):
         decision_rule = decision_rule.split(",")
         df = getattr(self, decision_rule[0]) 
         df = pd.eval(decision_rule[1].strip(), target=df)        
-        return df.weights.replace(np.inf, 0)
+        return df.weights.replace(np.inf, 0)'''
+
