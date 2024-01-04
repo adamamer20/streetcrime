@@ -1,0 +1,6 @@
+geopandas == 0.14.1 
+pandas == 2.1.4
+numpy == 1.26.3
+pyproj  == 3.6.1
+osmnx == 1.8.1
+scipy== 1.11.4
