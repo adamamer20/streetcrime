@@ -182,7 +182,7 @@ class TestCriminal(TestModel):
         self.assertEqual(self.model.crimes.iloc[-1].witnesses, 0)
         self.assertEqual(self.model.crimes.iloc[-1].victim, self.worker1.unique_id)
         self.assertEqual(self.model.crimes.iloc[-1].type, 'pickpocketing')
-        self.asserTrue(self.model.crimes.iloc[-1].successful)
+        self.assertTrue(self.model.crimes.iloc[-1].successful)
         
         #Test if it correctly chooses victim
         self.worker2 = Worker(unique_id = 4,
