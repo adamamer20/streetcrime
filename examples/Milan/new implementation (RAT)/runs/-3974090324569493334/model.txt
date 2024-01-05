@@ -1,0 +1,7 @@
+
+        Start Datetime: 2024-01-12 05:30:00
+        Length of step: 10
+        Space: Duomo, Milan, Italy
+        Number of agents: 100
+        Current datetime: 2024-01-12 05:30:00
+        

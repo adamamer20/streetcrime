@@ -142,3 +142,4 @@ __azurite_db*__.json
 examples/Milan/data/raw/bus.geojson
 cache/
 examples/Milan/outputs/runs/
+examples/Milan/old implementation/data/raw/bus.geojson
