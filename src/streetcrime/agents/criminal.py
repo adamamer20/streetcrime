@@ -1,225 +1,199 @@
-import random 
-import pandas as pd
-import geopandas as gpd
-from streetcrime.agents.resident import Resident
-from streetcrime.agents.worker import Worker
-from streetcrime.agents.police_agent import PoliceAgent
-from datetime import timedelta
-import mesa
-import pyproj
-from shapely.geometry import Point
-import numpy as np
+from dataclasses import dataclass
 
-class Criminal(Resident):
-    """The Criminal class is a subclass of Resident. Criminals are assigned a home based on the proportion of population and the income (lower income = higher probability) 
-    in each neighborhood and have a fixed work place and working hours. Everyday, they go to work and do activities if they don't have to work or rest. 
-    They choose activities based on the most visited neighborhoods.
-    
-    Parameters:
-    ----------
-    unique_id : int
-        The unique id of the Mover.
-    model : mesa.Model 
-        The model of the simulation where the Mover is used. See streetcrime/model/model.py
-    geometry : shapely.geometry.Point
-        The point geometry of the Mover in the city.
-    crs : pyproj.CRS 
-        The crs of the Mover (usually same as mesa_geo.GeoSpace).
+import numpy as np
+import pandas as pd
+
+from streetcrime.agents.resident import Resident, ResidentParams
+
+
+@dataclass
+class CriminalParams(ResidentParams):
+    """The CriminalParams class is a dataclass that contains the parameters of the Criminal class.
 
     Attributes:
     ----------
-    attributes : dict{str, Any}
-        It defines which additional attributes a Criminal class has with respect to its parent class. 
-        It can be a value or a method. The method is used for the initialization of Criminal.data. 
-        It contains:
-        - crime_motivation : float : self._gen_attribute('crime_motivation')
-            -- Affects the probability of the Criminal to be successful in his crime . 
-        - info_neighborhoods : pd.DataFrame : self.update_info('visits')
-            -- The dataframe containing the number of visits known to the Criminal in each neighborhood in the previous day.
-    
-    params : dict[str, float] 
-        It contains fixed attributes or information on how the previously specified attributes are going to be generated.
-        - mean_crime_motivation : float
-            -- The mean probability of the Criminal to be successful in his crime. Default: 0.5
-        - sd_crime_motivation : float
-            -- The standard deviation of the probability of the Criminal to be successful in his crime. Default: 0.17
-        - opportunity_awareness : float
-            -- The distance in meters for which the Criminal can find victims to commit a crime. Default: 300
-        - crowd_deterrance : float
-            -- The probability of the Criminal to be successful in his crime is reduced by this factor for each additional Worker in the vicinity. Default: 0.01
-        - p_information : float
-        #TODO: implement
-            -- The probability of the Criminal to get information on the most visited negihborhoods and on the whereabouts of the police. Default: 1
-            
-    data : dict[str, Any]
-        The actual attributes of the Criminal instance mirrored from the attributes and params dictionaries.
-    
-    Methods:
-    -------
-    step(): The step method of the Criminal.
-    commit_crime(): Checks for crime opportunities in the vicinity and commits one if conditions permit.
-    
-    See Also
-    --------
-    Resident: streetcrime/agent/resident.py
-    Mover: streetcrime/agent/mover.py
-    GeoAgent: mesa/geo_agent.py
-    StreetCrimeModel: streetcrime/model/model.py
-
+    opportunity_awareness : float
+        The distance in meters for which the Criminal can find victims to commit a crime. Default: 300
+    crowd_deterrance : float
+        The probability of the Criminal to be successfull in his crime is reduced by this factor for each additional Worker in the vicinity. Default: 0.01
+    crime_motivation_rule : str
+        The rule used to assign the crime motivation attribute to the Criminal. Default: "uniform"
     """
-    
-    '''TODO: add crime_motivation
-            elif attribute_name == "crime_motivation":
-                attribute_value = 1 - self.model.space.neighborhoods['city_income_distribution'].iloc[0].cdf(self.income) + np.random.normal(0, 0.10)
-                while attribute_value < 0 or attribute_value > 1:
-                    attribute_value = 1 - self.model.space.neighborhoods['city_income_distribution'].iloc[0].cdf(self.income) + np.random.normal(0, 0.10)
-                return attribute_value'''
-    opportunity_awareness : int = 150
-    crowd_effect : float = 0.01
-    p_information : float = 1
-    home_decision_rule : str = "neighborhoods, weights = df.prop * (1/df.mean_income)"
-    
-    
-    def __init__(self, 
-                 unique_id: int, 
-                 model: mesa.Model, 
-                 geometry: Point, 
-                 crs: pyproj.CRS,
-                 walking_speed : float = None,
-                 driving_speed : float= None,
-                 car_use_threshold : float = None,
-                 sd_activity_end : float = None,
-                 mean_activity_end : float = None,
-                 car : bool = None,
-                 act_decision_rule : str = None,
-                 p_information : float = None,
-                 mean_resting_start_time : float = None,
-                 sd_resting_start_time : float = None,
-                 mean_resting_end_time : float = None,
-                 sd_resting_end_time : float = None,
-                 car_income_threshold : float = None,
-                 home_decision_rule : str = None,
-                 limits_resting_start_time : list[float] = None,
-                 limits_resting_end_time : list[float] = None,
-                 opporunity_awareness = None, 
-                 crowd_effect = None) -> None:
-        
-        super().__init__(unique_id, 
-                    model, 
-                    geometry, 
-                    crs, 
-                    walking_speed, 
-                    driving_speed, 
-                    car_use_threshold, 
-                    sd_activity_end, 
-                    mean_activity_end,
-                    car,
-                    act_decision_rule,
-                    p_information,
-                    mean_resting_start_time,
-                    sd_resting_start_time,
-                    mean_resting_end_time,
-                    sd_resting_end_time,
-                    car_income_threshold,
-                    home_decision_rule,
-                    limits_resting_start_time,
-                    limits_resting_end_time)
 
-        if opporunity_awareness is not None:
-            self.opportunity_awareness = opporunity_awareness
-        if crowd_effect is not None:
-            self.crowd_effect = crowd_effect
-        
-        self.crime_motivation = self._gen_crime_motivation()
-    
-    def step(self) -> None:
-        """The step method of the Criminal. It checks if the Criminal can commit a crime and if so, it commits one."""
-        #Update informations
-        if (self.model.datetime.day > 1 
-            and self.model.datetime.hour == 0 
-            and self.model.datetime.minute == 0):
-            self.update_info('visits')
-        #Commit crime
-        if self.status == "transport":
-            self.commit_crime()
-        super().step()
+    opportunity_awareness: int = 150
+    crowd_effect: float = 0.01
+    crime_motivation_rule: str = "uniform"
+    # home_decision_rule: str = "neighborhoods, weights = df.prop * (1/df.mean_income)"
 
-    def commit_crime(self) -> None:
+
+class Criminal(Resident):
+    """The Criminal class is a subclass of Resident. Criminals travel around the city and commit crimes if they find opportunities.
+
+    Attributes:
+    ----------
+    dtypes : dict[str, str]
+        The attributes of the Agent as a dictionary of columns and data types. It contains:
+        - crime_motivation : float16
+            -- The probability of the Criminal to be successfull in his crime
+        - successfull_crime : bool
+            -- Whether the Criminal was successfull in his crime
+        - victim : int64
+            -- The id of the victim of the crime
+        - close_agents : object
+            -- The number of Workers in the vicinity of the Criminal
+
+    params : CriminalParams
+        The parameters of the Criminal class. See src/streetcrime/agents/criminal.py. Default: CriminalParams()
+    """
+
+    params: CriminalParams = CriminalParams()
+    dtypes: dict[str, str] = {
+        "crime_motivation": "float16",
+        "successfull_crime": "bool",
+        "victim": "int64",
+        "close_agents": "object",
+    }
+
+    @classmethod
+    def __init__(cls, params: CriminalParams = CriminalParams()):
+        """Initializes the Criminal class.
+
+        Parameters:
+        ----------
+        params : CriminalParams
+            The parameters of the Criminal. Default: CriminalParams()"""
+        super().__init__(params)
+        cls.model.agents.successfull_crime = False
+        cls._set_crime_motivation()
+
+    @classmethod
+    def step(cls) -> None:
+        """The step method of the Criminal class.
+        If the Criminal is in transport, finds a suitable victim and commits a crime."""
+        # super().step()
+        criminal_mask = cls.mask & (cls.model.agents.status == "transport")
+
+        for criminal in cls.model.agents[criminal_mask].itertuples():
+            # Find victims
+            available_victims = cls.model.agents[
+                (cls.model.agents["status"] == "transport")
+                & (cls.model.agents["type"].str.contains("Worker"))
+                & (~cls.model.agents["targeted"])
+            ]
+            close_agents = (
+                cls.model.agents["geometry"].distance(criminal.geometry)
+                <= cls.params.opportunity_awareness
+            )
+            police_agents = close_agents & (
+                cls.model.agents["type"].str.contains("Police")
+            )
+            if police_agents.any():
+                continue
+            close_victims = available_victims[
+                close_agents.reindex(available_victims.index)
+            ]
+            if (
+                close_victims["crime_attractiveness"].sum() == 0
+            ):  # if no victims or crime attractiveness is 0 for all victims
+                continue
+            victim = int(
+                close_victims.sample(
+                    1, weights=close_victims["crime_attractiveness"]
+                ).index[0]
+            )  # TODO: instead of iterating over criminals, sample all at once and
+            cls.model.agents.loc[victim, "targeted"] = True
+            cls.model.agents.loc[criminal.Index, "victim"] = victim
+            cls.model.agents.loc[criminal.Index, "close_agents"] = len(close_victims)
+
+        ### Compute whether the crime is successfull
+
+        committed_crimes = criminal_mask & (cls.model.agents["victim"].notna())
+
+        if type(cls) == Pickpocket:
+            cls.model.agents.loc[
+                committed_crimes, "successfull_crime"
+            ] = cls.model.agents.loc[
+                committed_crimes, "crime_motivation"
+            ] + cls.params.crowd_effect * (
+                cls.model.agents.loc[committed_crimes, "close_agents"] - 1
+            ) + np.random.normal(
+                0, 0.05
+            ) >= np.random.uniform(
+                0, 1
+            )
+        else:
+            cls.model.agents.loc[
+                committed_crimes, "successfull_crime"
+            ] = cls.model.agents.loc[
+                committed_crimes, "crime_motivation"
+            ] - cls.params.crowd_effect * (
+                cls.model.agents.loc[committed_crimes, "close_agents"] - 1
+            ) + np.random.normal(
+                0, 0.05
+            ) >= np.random.uniform(
+                0, 1
+            )  # TODO: missing the effect of the victim's cls defence
+
+        cls.model.crimes = pd.concat(
+            [
+                cls.model.crimes,
+                cls.model.agents.loc[
+                    committed_crimes, ["victim", "geometry", "type", "close_agents"]
+                ],
+            ]
+        )
+        cls.model.crimes.loc[
+            cls.model.crimes["datetime"].isna(), "datetime"
+        ] = cls.model.datetime
+
+        cls.model.agents.victim = np.nan
+        cls.model.agents.successfull_crime = False
+        cls.model.agents.close_agents = np.nan
+        cls.model.agents.targeted = False
+
         """Checks for crime opportunities in the vicinity and commits one if conditions permit."""
-        close_agents = list(self.model.space.get_neighbors_within_distance(self, distance = self.opportunity_awareness)) #Meters for which the criminal can commit a crime
-        possible_victims = [agent for agent in close_agents if (agent.status == "transport") and isinstance(agent, Worker)]
-        if len(possible_victims) > 0:
-            crime = {
-                    'step': self.model.step,
-                    'datetime' : self.model.datetime,
-                    'date' : self.model.datetime.date(),
-                    'position' : self.geometry,
-                    'neighborhood' : self.model.space.find_neighborhood_by_pos(self.geometry),
-                    'criminal' : self.unique_id,
-                    'witnesses' : len(possible_victims) - 1,
-                    'victim' : None,
-                    'type' : None,
-                    'successful' : None,
-                    'prevented' : False,
-                    }
-            if isinstance(self, Pickpocket):
-                crime['type'] = "pickpocketing"
-            elif isinstance(self, Robber):
-                crime['type'] = "robbery"
-            police = [agent for agent in close_agents if isinstance(agent, PoliceAgent)]
-            if len(police) > 0: #Awareness of police in the vicinity
-                neighborhood_id = [self.model.space.find_neighborhood_by_pos(police[0].geometry)]
-                if neighborhood_id is not None:
-                    #TODO: has to be changed
-                    #self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']] = self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']].astype(float)
-                    #self.model.info_neighborhoods.at[(self.unique_id, neighborhood_id), 'yesterday_police'] += 1
-                    #self.model.info_neighborhoods.at[(self.unique_id, neighborhood_id), 'run_police'] += 1
-                    #self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']] = self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']].astype(pd.SparseDtype(float, np.nan))
-                    pass
-                crime['prevented'] = True
-            else:
-                if len(possible_victims) > 0:
-                    possible_victims = sorted(possible_victims, key = lambda x: x.crime_attractiveness, reverse = True)
-                    victim = possible_victims[0]
-                    crime['victim'] = victim.unique_id
-                    neighborhood_id = self.model.space.find_neighborhood_by_pos(victim.geometry)
-                    #If the motivation is higher than the crowd deterrance
-                    if isinstance(self, Pickpocket):
-                        if (self.crime_motivation + self.crowd_effect*(len(possible_victims)-1) + random.gauss(0, 0.05)) >= np.random.uniform(0, 1):
-                            crime['successful'] = True
-                        else:
-                            crime['successful'] = False
-                    elif isinstance(self, Robber):
-                        if ((self.crime_motivation - self.crowd_effect*(len(possible_victims)-1) + random.gauss(0, 0.05)) >= (np.random.uniform(0, 1))) and (self.crime_motivation >= victim.defence):
-                            crime['successful'] = True
-                        else:
-                            crime['successful'] = False
-                crime = gpd.GeoDataFrame(crime, index = [0])
-                self.model.crimes = pd.concat([self.model.crimes, crime], 
-                                              ignore_index = True)
-                today = str(self.model.datetime.date())
-                column = today + '_crimes'
-                #TODO: This function for both space and movers should be merged in one
-                try:
-                    #self.model.info_neighborhoods.loc[:, column] = self.model.info_neighborhoods.loc[:, column].astype(float)
-                    #self.model.info_neighborhoods.at[(0, neighborhood_id), column] += 1
-                    #self.model.info_neighborhoods.loc[:, column] = self.model.info_neighborhoods.loc[:, column].astype(pd.SparseDtype(float, np.nan))
-                    pass
-                except KeyError:
-                    #self.model.info_neighborhoods.loc[:, column] = self.model.info_neighborhoods.loc[:, column].astype(float)
-                    #self.model.info_neighborhoods[column] = 1
-                    #self.model.info_neighborhoods.at[(0, neighborhood_id), column] += 1
-                    #self.model.info_neighborhoods.loc[:, column] = self.model.info_neighborhoods.loc[:, column].astype(pd.SparseDtype(float, np.nan))
-                    pass
+        """if len(police) > 0: #Awareness of police in the vicinity
+            neighborhood_id = [self.model.space.find_neighborhood_by_pos(police[0].geometry)]
+            if neighborhood_id is not None:
+                #TODO: the data which stores crimes should be updated in the model
+                #self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']] = self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']].astype(float)
+                #self.model.info_neighborhoods.at[(self.unique_id, neighborhood_id), 'yesterday_police'] += 1
+                #self.model.info_neighborhoods.at[(self.unique_id, neighborhood_id), 'run_police'] += 1
+                #self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']] = self.model.info_neighborhoods.loc[:, ['yesterday_police', 'run_police']].astype(pd.SparseDtype(float, np.nan))
+                pass
+            crime['prevented'] = True"""
 
-    def _gen_crime_motivation(self) -> float:
-        crime_motivation = 1 - self.model.space.income_distribution.cdf(self.income) + np.random.normal(0, 0.10)
-        while crime_motivation < 0 or crime_motivation > 1:
-            crime_motivation =  1 - self.model.space.income_distribution.cdf(self.income) + np.random.normal(0, 0.10)
-        return crime_motivation
+    @classmethod
+    def _set_crime_motivation(cls) -> float:
+        """Sets the crime motivation attribute of the Criminal."""
+        if cls.params.crime_motivation_rule == "uniform":
+            cls.model.agents.loc[cls.mask, "crime_motivation"] = np.random.uniform(
+                0, 1, cls.mask.sum()
+            )
+
+        # TODO: implement normal distribution and income distribution for crime motivation
+
+        """elif attribute_name == "crime_motivation":
+            attribute_value = 1 - self.model.space.neighborhoods['city_income_distribution'].iloc[0].cdf(self.income) + np.random.normal(0, 0.10)
+            while attribute_value < 0 or attribute_value > 1:
+                attribute_value = 1 - self.model.space.neighborhoods['city_income_distribution'].iloc[0].cdf(self.income) + np.random.normal(0, 0.10)
+            return attribute_value"""
+
 
 class Pickpocket(Criminal):
-    act_decision_rule : str = "buildings, weights = (1/df.geometry.distance(agent.geometry)) * df.yesterday_visits * df.run_visits * df.mean_income * (1/df.yesterday_police) * (1/df.run_police)"
-    
+    """A Pickpocket is a Criminal that pickpockets Workers, he has an advantage if there are more close workers."""
+
+    # act_decision_rule: str = "buildings, weights = (1/df.geometry.distance(agent.geometry)) * df.yesterday_visits * df.run_visits * df.mean_income * (1/df.yesterday_police) * (1/df.run_police)"
+
+    @classmethod
+    def step(cls):
+        pass
+
 class Robber(Criminal):
-    act_decision_rule : str = "buildings, weights = (1/df.geometry.distance(agent.geometry)) * (1/df.yesterday_visits) * (1/df.run_visits) * df.mean_income * (1/df.yesterday_police) * (1/df.run_police)"
+    """A Robber is a Criminal that robs Workers, he has a disadvantage if there are more close workers."""
+
+    # act_decision_rule: str = "buildings, weights = (1/df.geometry.distance(agent.geometry)) * (1/df.yesterday_visits) * (1/df.run_visits) * df.mean_income * (1/df.yesterday_police) * (1/df.run_police)"
+    
+    @classmethod
+    def step(cls):
+        pass

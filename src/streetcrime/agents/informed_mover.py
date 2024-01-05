@@ -1,82 +1,46 @@
-import pandas as pd
-from datetime import datetime, timedelta
-from streetcrime.agents.mover import Mover
-import mesa
-from shapely.geometry import Point
-import pyproj
-import numpy as np
+from streetcrime.agents.mover import Mover, MoverParams
+from dataclasses import dataclass
+# import numpy as np
+# import pandas as pd
+# from datetime import datetime
+
+
+@dataclass
+class InformedMoverParams(MoverParams):
+    """The InformedMoverParams class is a dataclass that contains the parameters of an InformedMover.
+
+    Attributes:
+    ----------
+    p_information : float = 1
+        It defines the percentage of information the InformedMover knows about the previous day.
+    """
+
+    p_information: float = 1
+
 
 class InformedMover(Mover):
     """The InformedMover class is a subclass of Mover. It can update its information about the city, grouped by neighborhood.
 
-    Parameters:
-    ----------
-        unique_id : int
-            The unique id of the Mover.
-        model : mesa.Model 
-            The model of the simulation where the Mover is used. See streetcrime/model/model.py
-        geometry : shapely.geometry.Point
-            The point geometry of the Mover in the city.
-        crs : pyproj.CRS 
-            The crs of the Mover (usually same as mesa_geo.GeoSpace).
-    
     Attributes:
     ----------
-    attributes : dict[str : pd.DataFrame]
-        It defines which additional attributes a InformedMover class has with respect to its parent class.
-        It can be a value or a method. The method is used for the initialization of the attribute in InformedMover.data. 
-        It contains:
-        - info_neighborhoods : pd.Dataframe()
-            -- The dataframe containing the information known to the InformedMover in each neighborhood (columns = yesterday_{info_type}, run_{info_type})
-    
-    params : dict[str, float]
-        It contains fixed attributes or information on how the previously specified attributes are going to be generated.
-        - p_information : float
-            -- The p of information (randomly sampled) the InformedMover will get about the previous day. Default: 1
-            
-    Methods:
-    -------
-    update_info(info_type : str = None) -> None
-        -- Updates the information about the city of the previous day.
-        
-    See Also
-    --------
-    Mover: streetcrime/agent/mover.py
-    GeoAgent: mesa/geo_agent.py
-    StreetCrimeModel: streetcrime/model/model.py        
-    """
-    
     p_information : float = 1
+        It defines the percentage of information the InformedMover knows about the previous day.
+    """
+    params: InformedMoverParams = InformedMoverParams()
+    dtypes: dict[str, str] = {
+        # TODO: add data types
+    }
 
-    def __init__(self,
-                 unique_id : int, 
-                 model : mesa.Model, 
-                 geometry : Point, 
-                 crs : pyproj.CRS,
-                 walking_speed : float = None,
-                 driving_speed : float= None,
-                 car_use_threshold : float = None,
-                 sd_activity_end : float = None,
-                 mean_activity_end : float = None,
-                 car : bool = None,
-                 act_decision_rule : str = None,
-                 p_information : float = None):
-        
-        super().__init__(unique_id, 
-                         model, 
-                         geometry, 
-                         crs, 
-                         walking_speed, 
-                         driving_speed, 
-                         car_use_threshold, 
-                         sd_activity_end, 
-                         mean_activity_end,
-                         car,
-                         act_decision_rule)
-        
-        if p_information is not None:
-            self.p_information = p_information
-            
+    @classmethod
+    def __init__(cls, params: InformedMoverParams = InformedMoverParams()) -> None:
+        """Initializes the InformedMover class.
+        Parameters:
+        ----------
+        params : InformedMoverParams
+            The parameters of the InformedMover. Default: InformedMoverParams"""
+        super().__init__(params)
+
+    ''''#TODO: refactor as dataframe
     def update_info(self, info_type : str = None) -> None:
         """Gets a random sample of `p = Mover.p_information` of the previous day information from the `Mover.model.data[f'{info_type}']` dataframe, 
         groups it by neighborhood and updates the `Mover.data['info_neighborhoods']` dataframe.
@@ -109,7 +73,4 @@ class InformedMover(Mover):
                 self.model.info_neighborhoods = self.model.info_neighborhoods.astype(float)
                 complete_info = self.model.info_neighborhoods.xs(0)
                 self.model.info_neighborhoods.loc[self.unique_id].update(complete_info)
-                self.model.info_neighborhoods = self.model.info_neighborhoods.astype(pd.SparseDtype(float, np.nan))
-
-    
-    
+                self.model.info_neighborhoods = self.model.info_neighborhoods.astype(pd.SparseDtype(float, np.nan))'''
