@@ -10,7 +10,7 @@ from streetcrime.agents.resident import Resident, ResidentParams
 class CriminalParams(ResidentParams):
     """The CriminalParams class is a dataclass that contains the parameters of the Criminal class.
 
-    Attributes:
+    Attributes
     ----------
     opportunity_awareness : float
         The distance in meters for which the Criminal can find victims to commit a crime. Default: 300
@@ -29,7 +29,7 @@ class CriminalParams(ResidentParams):
 class Criminal(Resident):
     """The Criminal class is a subclass of Resident. Criminals travel around the city and commit crimes if they find opportunities.
 
-    Attributes:
+    Attributes
     ----------
     dtypes : dict[str, str]
         The attributes of the Agent as a dictionary of columns and data types. It contains:
@@ -58,7 +58,7 @@ class Criminal(Resident):
     def __init__(cls, params: CriminalParams = CriminalParams()):
         """Initializes the Criminal class.
 
-        Parameters:
+        Parameters
         ----------
         params : CriminalParams
             The parameters of the Criminal. Default: CriminalParams()"""
@@ -189,11 +189,12 @@ class Pickpocket(Criminal):
     def step(cls):
         pass
 
+
 class Robber(Criminal):
     """A Robber is a Criminal that robs Workers, he has a disadvantage if there are more close workers."""
 
     # act_decision_rule: str = "buildings, weights = (1/df.geometry.distance(agent.geometry)) * (1/df.yesterday_visits) * (1/df.run_visits) * df.mean_income * (1/df.yesterday_police) * (1/df.run_police)"
-    
+
     @classmethod
     def step(cls):
         pass

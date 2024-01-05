@@ -16,8 +16,8 @@ from streetcrime.space.city import City
 class StreetCrime(ModelDF):
     """The StreetCrime class contains the model of the simulation.
 
-    Attributes:
-    -----------
+    Parameters
+    ----------
     space : City
         The city where the simulation takes place.
     activity_len_distr : scipy.stats.lognorm
@@ -60,7 +60,7 @@ class StreetCrime(ModelDF):
     ):
         """Initializes the StreetCrime class.
 
-        Parameters:
+        Parameters
         -----------
         space : City
             The city where the simulation takes place.

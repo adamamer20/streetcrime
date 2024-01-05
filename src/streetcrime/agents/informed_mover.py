@@ -1,5 +1,7 @@
-from streetcrime.agents.mover import Mover, MoverParams
 from dataclasses import dataclass
+
+from streetcrime.agents.mover import Mover, MoverParams
+
 # import numpy as np
 # import pandas as pd
 # from datetime import datetime
@@ -9,7 +11,7 @@ from dataclasses import dataclass
 class InformedMoverParams(MoverParams):
     """The InformedMoverParams class is a dataclass that contains the parameters of an InformedMover.
 
-    Attributes:
+    Attributes
     ----------
     p_information : float = 1
         It defines the percentage of information the InformedMover knows about the previous day.
@@ -21,11 +23,12 @@ class InformedMoverParams(MoverParams):
 class InformedMover(Mover):
     """The InformedMover class is a subclass of Mover. It can update its information about the city, grouped by neighborhood.
 
-    Attributes:
+    Attributes
     ----------
     p_information : float = 1
         It defines the percentage of information the InformedMover knows about the previous day.
     """
+
     params: InformedMoverParams = InformedMoverParams()
     dtypes: dict[str, str] = {
         # TODO: add data types
@@ -34,7 +37,7 @@ class InformedMover(Mover):
     @classmethod
     def __init__(cls, params: InformedMoverParams = InformedMoverParams()) -> None:
         """Initializes the InformedMover class.
-        Parameters:
+        Parameters
         ----------
         params : InformedMoverParams
             The parameters of the InformedMover. Default: InformedMoverParams"""
@@ -45,7 +48,7 @@ class InformedMover(Mover):
         """Gets a random sample of `p = Mover.p_information` of the previous day information from the `Mover.model.data[f'{info_type}']` dataframe, 
         groups it by neighborhood and updates the `Mover.data['info_neighborhoods']` dataframe.
      
-        Parameters:
+        Parameters
         ----------
         info_type : str 
             can be "crimes", "visits"

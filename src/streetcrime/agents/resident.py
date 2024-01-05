@@ -10,7 +10,7 @@ from streetcrime.agents.informed_mover import InformedMover, InformedMoverParams
 class ResidentParams(InformedMoverParams):
     """The ResidentParams class is a dataclass that contains the parameters of the Resident class.
 
-    Attributes:
+    Attributes
     ----------
     mean_resting_start_time : float
         The mean time when the Resident starts resting. Default: 21
@@ -37,7 +37,7 @@ class ResidentParams(InformedMoverParams):
 class Resident(InformedMover):
     """The Resident Class is a subclass of InformedMover. With respect to InformedMover, it has a home generates a resting timeframe every day.
 
-    Attributes:
+    Attributes
     ----------
     dtypes : dict[str, str]
         The attributes of the Agent as a dictionary of columns and data types. It contains:
@@ -66,7 +66,7 @@ class Resident(InformedMover):
     @classmethod
     def __init__(cls, params: ResidentParams = ResidentParams()) -> None:
         """Sets Resident status and position at home
-        Parameters:
+        Parameters
         ----------
         params : ResidentParams
             The parameters of the Resident. Default: ResidentParams
@@ -110,14 +110,14 @@ class Resident(InformedMover):
         # If it is not resting time and at home, set status as free
         mask = cls.mask & (~resting_mask) & (cls.model.agents.status == "home")
         cls.model.agents.loc[mask, "status"] = "free"
-        #super().step()
+        # super().step()
 
     @classmethod
     def set_resting_time(cls, first_day=False):
         """
         Sets the resting time for each agent.
 
-        Parameters:
+        Parameters
         ----------
         first_day : bool
             Whether it is the first day of the simulation or not. When it's the first day, only resting_end_time is computed. Default: False

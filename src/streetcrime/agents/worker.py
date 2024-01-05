@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+
 from streetcrime.agents.resident import Resident, ResidentParams
 
 
@@ -10,7 +11,7 @@ class WorkerParams(ResidentParams):
     """
     The WorkerParams class is a dataclass that contains the parameters of the Worker class.
 
-    Attributes:
+    Attributes
     ----------
     mean_work_start_time : float
         The mean time when the Worker starts working. Default: 8
@@ -50,7 +51,7 @@ class Worker(Resident):
     """The Worker class is a subclass of Resident. Workers are assigned a home based on the proportion of population in each neighborhood and have a fixed work place and working hours.
     Everyday, they go to work and do activities if they don't have to work or rest. They choose activities based on recent crimes in the neighborhood.
 
-    Attributes:
+    Attributes
     ----------
     dtypes : dict[str, str]
         The attributes of the Agent as a dictionary of columns and data types. It contains:
@@ -82,7 +83,7 @@ class Worker(Resident):
     def __init__(cls, params: WorkerParams = WorkerParams()) -> None:
         """Initializes the Worker class.
 
-        Parameters:
+        Parameters
         ----------
         params : WorkerParams
             The parameters of the Worker. Default: WorkerParams

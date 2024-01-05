@@ -21,54 +21,32 @@ class City:
     The City class is the GeoSpace in which agents move.
     It is used to store the road & public transport network, the buildings and neighborhoods dataframes.
 
-    Attributes:
+    Attributes
     ----------
-        crs : pyproj.CRS
-            The crs of the city. Should be projected.
-        city_name : str
-            City to pass to `osmnx` to download layers.
-        roads_nodes : gpd.GeoDataFrame | None
-            The nodes of the road network. None if not loaded.
-        roads_edges : gpd.GeoDataFrame | None
-            The edges of the road network. None if not loaded.
-        roads : nx.DiGraph | None
-            The road network. None if not loaded.
-        paths : pd.DataFrame
-            The dataframe containing all pairs shortest paths of the road network.
-        **layers : str | (Callable, list[str]) | (Callable, dict[str, str]
-            Currently DEPRECATED, do not use.
-            The layers of the city. Can be 'roads', 'public_transport', 'neighborhoods' or 'buildings'
-            If str, it is the path to the file containing the layer
-            If (Callable, dict[str, str]) it is a method of city with keyword parameters of the associated function
-            If (Callable, list[str]) it is a method of city with ordered parameters of the associated function
+    crs : pyproj.CRS
+        The crs of the city. Should be projected.
+    city_name : str
+        City to pass to `osmnx` to download layers.
+    roads_nodes : gpd.GeoDataFrame | None
+        The nodes of the road network. None if not loaded.
+    roads_edges : gpd.GeoDataFrame | None
+        The edges of the road network. None if not loaded.
+    roads : nx.DiGraph | None
+        The road network. None if not loaded.
+    paths : pd.DataFrame
+        The dataframe containing all pairs shortest paths of the road network.
+    **layers : str | (Callable, list[str]) | (Callable, dict[str, str]
+        Currently DEPRECATED, do not use.
+        The layers of the city. Can be 'roads', 'public_transport', 'neighborhoods' or 'buildings'
+        If str, it is the path to the file containing the layer
+        If (Callable, dict[str, str]) it is a method of city with keyword parameters of the associated function
+        If (Callable, list[str]) it is a method of city with ordered parameters of the associated function
 
-    Methods:
-    ----------
-        load_data(tolerance : int = 15, traffic_factor : int = 1, roads_file : str | None = None, buildings_file : str | None = None, building_categories : pd.DataFrame | None = None) -> None
-            Obtains the data of the city from OSMNX and saves it in the specified files
-            or reads data from the file passed as arguments.
-        get_random
-
-
-
-        _obtain_roads(out_file : str, tolerance : int = 20, traffic_factor : int = 1) -> nx.MultiDiGraph
-            It reads a .gpkg or .graphml file specified in `out_file` or obtains the road network from `osmnx.graph_from_place`
-        get_random_building(agent : agent, function : str) -> int
-            Returns a random building id based on the function passed as argument
-        find_neighborhood_by_pos(position : Point) -> int
-            Returns the neighborhood id of the neighborhood in which the position passed as argument is contained
-        self.buildings.geometry.distance(position : Point) -> gpd.GeoSeries
-            Returns the distance from the position passed as argument to all the buildings in the city
-        update_information() -> None
-            Updates 'yesterday_crimes' and 'yesterday_visits' columns of the buildings dataframe with data
-            collected in 'today_crimes' and 'today_visits' columns of the neighborhoods dataframe
     """
 
     def __init__(self, crs: CRS, city_name: str) -> None:
         """
-
-
-        Parameters:
+        Parameters
         ----------
         crs : pyproj.CRS
             The crs of the city. Should be projected.
@@ -205,10 +183,10 @@ class City:
         self.roads = nx.DiGraph(roads)
 
         # Save boundaries
-        (ox.geocoder.geocode_to_gdf(self.city_name)
+        (
+            ox.geocoder.geocode_to_gdf(self.city_name)
             .to_crs(self.crs)
-            .to_file(
-            f"outputs/city/{self.city_name.split(',')[0]}_boundaries.gpkg")
+            .to_file(f"outputs/city/{self.city_name.split(',')[0]}_boundaries.gpkg")
         )
 
     def get_random_nodes(
@@ -456,7 +434,7 @@ class City:
       def find_neighborhood_by_pos(self, position: Point) -> int:
         """Find the neighborhood in which the position passed as argument is contained
 
-        Parameters:
+        Parameters
         ----------
             position (Point): The position to find the containing neighborhood
 

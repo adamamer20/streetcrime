@@ -21,7 +21,7 @@ class PoliceAgent(InformedMover):
         """
         Initializes the PoliceAgent class.
 
-        Parameters:
+        Parameters
         ----------
         params : PoliceAgentParams
             The parameters of the PoliceAgent. Default: PoliceAgentParams

@@ -18,7 +18,7 @@ class MoverParams:
     """
     It contains the parameters for the Mover class
 
-    Attributes:
+    Attributes
     ----------
     walking_speed : float
         The speed of the Mover when walking (m/s). Default: 1.9
@@ -34,13 +34,14 @@ class MoverParams:
     # car : bool = True
     # act_decision_rule : str = "buildings, weights = 1/df.geometry.distance(agent.geometry)"
 
+
 class Mover(GeoAgentDF):
     """The Mover class, is the base class for all agents in the simulation.
     It is able to move around the city using the road network.
     It has a unique id and a geometry (Point) that represents his position in the city. He also has a status that describes what he is currently doing.
     At every step, the mover moves but only if he is travelling. If he's free, he gets a random activity to go to.
 
-    Attributes:
+    Attributes
     ----------
     dtypes : dict[str, str]
         The attributes of the Agent as a dictionary of columns and data types. It contains:
@@ -76,7 +77,7 @@ class Mover(GeoAgentDF):
     @classmethod
     def __init__(cls, params: MoverParams = MoverParams()) -> None:
         """
-        Parameters:
+        Parameters
         ----------
         walking_speed : float
             The speed of the Mover when walking (m/s). Default: 1.9
@@ -114,7 +115,7 @@ class Mover(GeoAgentDF):
         """
         Returns a Pandas Series of random values for the attribute based on specified parameters.
 
-        Parameters:
+        Parameters
         ----------
         attribute_type : str, default="float"
             the type of the attribute to generate. Can be "float", "datetime_fixed", "datetime_variable"
@@ -154,7 +155,7 @@ class Mover(GeoAgentDF):
                         next_day : float = False) -> float | datetime | list[int]:
             """Returns a random value for the attribute `attribute_name` based on the specified type, and mean/sd/min/max specified in params.
 
-            Parameters:
+            Parameters
             ----------
             attribute_name : str
                 the name of the attribute to generate 
