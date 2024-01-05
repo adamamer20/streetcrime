@@ -129,6 +129,7 @@ class City:
         roads_file: str | None = None,
         buildings_file: str | None = None,
         building_categories: pd.DataFrame | None = None,
+        boundaries_file: str | None = None,
     ) -> None:
         """Obtains the data of the city from OSMNX and saves it in the specified files
         or reads data from the file passed as arguments.
@@ -161,10 +162,8 @@ class City:
             raise ValueError(f"Tolerance set to {tolerance}. Should be greater than 0")
 
         if not roads_file:
-            if not os.path.isdir("outputs"):
-                os.mkdir("outputs")
             if not os.path.isdir("outputs/city"):
-                os.mkdir("outputs/city")
+                os.makedirs("outputs/city")
             roads_file = f"outputs/city/{self.city_name.split(',')[0]}_roads.gpkg"
 
         # Obtain roads
@@ -205,7 +204,12 @@ class City:
         print(f"Saved roads in {roads_file}")
         self.roads = nx.DiGraph(roads)
 
-        # Compute all pairs shortest path (faster than lazy computation at each iteration)
+        # Save boundaries
+        (ox.geocoder.geocode_to_gdf(self.city_name)
+            .to_crs(self.crs)
+            .to_file(
+            f"outputs/city/{self.city_name.split(',')[0]}_boundaries.gpkg")
+        )
 
     def get_random_nodes(
         self,
