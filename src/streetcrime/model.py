@@ -1,7 +1,9 @@
 import math
+import os.path
 from datetime import date, datetime, timedelta
 
 import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from mesa_frames.model import ModelDF
@@ -14,35 +16,6 @@ from streetcrime.space.city import City
 class StreetCrime(ModelDF):
     """The StreetCrime class contains the model of the simulation.
 
-    Parameters:
-    -----------
-    space : City
-        The city where the simulation takes place.
-    p_agents : dict[type[Mover], float]
-        The dictionary containing the proportion of each type of agent in the simulation.
-    n_agents : int
-        The number of agents in the simulation.
-    data_collection : str
-        *FUTURE IMPLEMENTATION*. The frequency of the data collection. It can be 'xd', 'xd', 'xh', 'weekly', 'daily', 'hourly'. Default: '2d'
-    transport : str | list[str]
-        *FUTURE IMPLEMENTATION*. The mode of transport of the agents. It can be 'on_foot', 'car', 'public_transport'. Default: 'on_foot'
-    crime_theory : str
-        *FUTURE IMPLEMENTATION*. The crime theory used in the simulation. It can be 'RAT', 'CPT', 'SCT'. Default: 'RAT'
-    days : int
-        The number of days the simulation lasts. Default: 7
-    len_step : int
-        The length of each step in minutes. Default: 10
-    start_datetime : datetime
-        The datetime when the simulation starts. Default: datetime(date.today().year, date.today().month, date.today().day, 5, 30)
-    day_act_start : int
-        The hour when activities open during the day become available. Default: 8
-    day_act_end : int
-        The hour when activities open during the day become unavailable . Default: 19
-    mean_activity_length : float
-        The mean length of an activity in minutes. Activity length is distributed as a lognorm. Default: 60
-    sd_activity_length : float
-        The standard deviation of the length of an activity in minutes. Activity length is distributed as a lognorm. Default: 20
-
     Attributes:
     -----------
     space : City
@@ -51,7 +24,7 @@ class StreetCrime(ModelDF):
         The lognorm distribution of the length of an activity.
     datetime : datetime
         The current datetime of the simulation.
-    len_step : int
+    len_step : int | None
         The length of each step in minutes.
     day_act_start : int
         The hour when activities open during the day become available .
@@ -70,8 +43,6 @@ class StreetCrime(ModelDF):
     def __init__(
         self,
         space: City,
-        p_agents: dict[type[Mover], float],
-        n_agents: int = 100,
         data_collection: str = "2d",  # TODO: implement different data collection frequencies (xw, xd, xh, weekly, daily, hourly)
         transport: str
         | list[
@@ -93,18 +64,12 @@ class StreetCrime(ModelDF):
         -----------
         space : City
             The city where the simulation takes place.
-        p_agents : dict[type[Mover], float]
-            The dictionary containing the proportion of each type of agent in the simulation.
-        n_agents : int
-            The number of agents in the simulation.
         data_collection : str
             *FUTURE IMPLEMENTATION*. The frequency of the data collection. It can be 'xd', 'xd', 'xh', 'weekly', 'daily', 'hourly'. Default: '2d'
         transport : str | list[str]
             *FUTURE IMPLEMENTATION*. The mode of transport of the agents. It can be 'on_foot', 'car', 'public_transport'. Default: 'on_foot'
         crime_theory : str
             *FUTURE IMPLEMENTATION*. The crime theory used in the simulation. It can be 'RAT', 'CPT', 'SCT'. Default: 'RAT'
-        len_step : int
-            The length of each step in minutes. Default: 10
         start_datetime : datetime
             The datetime when the simulation starts. Default: datetime(date.today().year, date.today().month, date.today().day, 5, 30)
         day_act_start : int
@@ -116,7 +81,7 @@ class StreetCrime(ModelDF):
         sd_activity_length : float
             The standard deviation of the length of an activity in minutes. Activity length is distributed as a lognorm. Default: 20
         """
-        super().__init__(space)
+        super().__init__(space=space)
 
         # Initialize model attributes
         self.activity_len_distr = stats.lognorm(
@@ -126,21 +91,12 @@ class StreetCrime(ModelDF):
                 - 0.5 * np.log(sd_activity_length**2 / mean_activity_length**2 + 1)
             ),
         )
-        self.space = space
-        self.len_step = len_step
+        self.start_datetime = start_datetime
         self.datetime = start_datetime
         self.day_act_start = day_act_start
         self.day_act_end = day_act_end
-
-        # Create movers
-        self.create_agents(n_agents, p_agents)
-        self.paths = pd.DataFrame(
-            np.nan,
-            index=self.agents.index,
-            columns=["ancestor", "successor", "length", "travelled_distance"],
-        )
-
-        # self.agents_info = self._create_agents_info()
+        self.len_step: int | None = None
+        self.paths: pd.DataFrame | None = None
 
         self.crimes = gpd.GeoDataFrame(
             columns=[
@@ -155,21 +111,142 @@ class StreetCrime(ModelDF):
             ]
         )
 
-    def step(self, merged_mro=True) -> None:
-        """Advance the model by one step, updating datetime by len_step and executing the step method of each agent."""
-        # Advance time
-        self.datetime = self.datetime + timedelta(minutes=self.len_step)
+    def create_agents(
+        self,
+        n_agents: int,
+        p_agents: dict[type[Mover], float],
+    ) -> None:
+        """Creates agents of the model.
 
-        super().step(merged_mro=True)
+        Parameters
+        ----------
+        n_agents : int
+            The number of agents to create.
+        p_agents : dict[type[Mover], float]
+            A dictionary with the type agent and the proportion out of a 100.
+        """
+        # Create movers
+        super().create_agents(n_agents, p_agents)
+        self.paths = pd.DataFrame(
+            np.nan,
+            index=self.agents.index,
+            columns=["ancestor", "successor", "length", "travelled_distance"],
+        )
+        # self.agents_info = self._create_agents_info()
 
-        """# Only at midnight of each day after the first one, update information on crimes and visits of the previous day
-        if (self.datetime.day > 1 and self.datetime.hour == 0 and self.datetime.minute == 0):
-            self._update_information()
-            self.space.save_paths_files(['roads', 'public_transport'])"""
+    def run_model(self, days: int, len_step: int) -> None:
+        """
+        Runs the model for a number of days with a given length of step in minutes.
 
-    def run_model(self, days: int, merged_mro=True) -> None:
-        n_steps = int(days * 24 * 60 / self.len_step)
-        super().run_model(n_steps, merged_mro=True)
+        Parameters
+        ----------
+        days : int
+            The number of days to run the model.
+        len_step : int
+            The length of each step in minutes."""
+        self.len_step = len_step
+        n_steps = int(days * 24 * 60 / len_step)
+
+        for _ in range(n_steps):
+            # Advance time
+            self.datetime = self.datetime + timedelta(minutes=len_step)
+            super().step(merged_mro=True)
+
+    def save_state(self):
+        """Saves the state of the model (agents, crimes, path and model info) in the outputs/runs folder.
+        Allows to load the state of the model later.
+        """
+        if not os.path.exists(f"outputs/runs/{self.unique_id}"):
+            os.makedirs(f"outputs/runs/{self.unique_id}")
+        self.agents.to_file(f"outputs/runs/{self.unique_id}/agents.gpkg")
+        with open(f"outputs/runs/{self.unique_id}/model.txt", "w") as f:
+            f.write(
+                f"""
+        Start Datetime: {self.start_datetime}
+        Length of step: {self.len_step}
+        Space: {self.space.city_name}
+        Number of agents: {len(self.agents)}
+        Current datetime: {self.datetime}
+        """
+            )
+        self.crimes.datetime = self.crimes.datetime.astype(str)
+        self.crimes.to_file(f"outputs/runs/{self.unique_id}/crimes.gpkg")
+        self.paths.to_csv(f"outputs/runs/{self.unique_id}/paths.csv")
+
+    def plot(
+        self,
+        roads=True,
+        buildings=True,
+        agents=True,
+        boundaries=True,
+        crimes=True,
+        save=True,
+    ):
+        """Plots the current state of the model.
+
+        Parameters
+        ----------
+        roads : bool, optional
+            If True plots road network, by default True
+        buildings : bool, optional
+            If True plots buildings as grey, by default True
+        agents : bool, optional
+            If True plots agents as green points, by default True
+        boundaries : bool, optional
+            if True plots boundaries of the city, by default True
+        crimes : bool, optional
+            If True plots committed crimes as red points, by default True
+        save : bool, optional
+            If True saves the plots in output/runs/plots, by default True
+        """
+        self.save_state()
+
+        alpha = 1 if boundaries else 0
+        ax = gpd.read_file(
+            f"outputs/city/{self.space.city_name.split(',')[0]}_boundaries.gpkg"
+        ).plot(alpha=alpha)
+
+        if roads:
+            self.space.roads_nodes.plot(ax=ax, color="black", markersize=1)
+            self.space.roads_edges.plot(ax=ax, color="black")
+
+        if buildings:
+            gpd.read_file(
+                f"outputs/city/{self.space.city_name.split(',')[0]}_buildings.gpkg"
+            ).plot(ax=ax, color="grey")
+
+        if agents:
+            (
+                gpd.GeoDataFrame(
+                    self.agents[self.agents.geometry.isna()]
+                    .drop("geometry", axis="columns")
+                    .merge(
+                        self.space.roads_nodes.geometry,
+                        left_on="node",
+                        right_index=True,
+                    )
+                ).plot(ax=ax, color="green")
+            )
+            self.agents[self.agents.geometry.notna()].geometry.plot(
+                ax=ax, color="green"
+            )
+
+        if crimes:
+            self.crimes.plot(ax=ax, color="red")
+
+        ax.set_axis_off()
+        if save:
+            plt.savefig(f"outputs/runs/{self.unique_id}/plot.png")
+        else:
+            plt.show()
+
+    def load_state(self, unique_id: str):
+        self.unique_id = unique_id
+        self.agents = gpd.read_file(f"outputs/runs/{self.unique_id}/agents.gpkg")
+        self.agents.set_index("id", inplace=True)
+        self.crimes = gpd.read_file(f"outputs/runs/{self.unique_id}/crimes.gpkg")
+        self.crimes.datetime = pd.to_datetime(self.crimes.datetime)
+        self.paths = pd.read_csv(f"outputs/runs/{self.unique_id}/paths.csv")
 
     ''' #TODO: implement data collector in mesa_frames
     
