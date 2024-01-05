@@ -126,7 +126,7 @@ class City:
         self,
         tolerance: int = 15,
         traffic_factor: int = 1,
-        roads_file: str | None = None,  # TODO: specify default value
+        roads_file: str | None = None,
         buildings_file: str | None = None,
         building_categories: pd.DataFrame | None = None,
     ) -> None:
