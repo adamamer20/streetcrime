@@ -54,7 +54,9 @@ milan.load_data()
 
 #### Agents
 Here is a diagram which shows the currently supported agents:
-<img src="https://github.com/adamamer20/streetcrime/blob/main/docs/images/classes.png" width="50%"/>
+
+<img src="https://github.com/adamamer20/streetcrime/blob/main/docs/images/classes.png" width="30%"/>
+
 New agents should be created from existing classes. For example, a House Thief could inherit from the Criminal class.
 
 
