@@ -2,6 +2,8 @@
 
 Urban crime, with its complex local interactions and spatial dynamics, is an excellent candidate for Agent-Based Modeling (ABM). The `streetcrime` package is designed as a robust, user-friendly ABM tool for urban crime analysis. It facilitates the testing of various crime theories, compares them with real crime data, and evaluates crime reduction strategies. Future versions will include Machine Learning (ML) features for parameter tuning. The package integrates [`osmnx`](https://github.com/gboeing/osmnx) for urban data and [`mesa`](https://github.com/projectmesa/mesa) (along with[ `mesa-frames`](https://github.com/adamamer20/mesa-frames)) for the modeling framework.
 
+`streetcrime` was developed for my BSc thesis. You can find the document [here](https://github.com/adamamer20/streetcrime/blob/main/docs/StreetCrime__A_generative_science_approach.pdf).
+
 ## Installation
 
 ### Prerequisites
@@ -100,6 +102,8 @@ model.plot()
 ```
 
 ## What's Next?
+If you encounter any challanges in using the package, or if you have suggestions for feature enhancements, please feel free to open an issue on this GitHub repository. 
+
 - Enabling information access for InformedMover.
 - Incorporating public transport routes data.
 - Integrating diverse criminological theories (eg. ).
