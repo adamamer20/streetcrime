@@ -139,7 +139,6 @@ __azurite_db*__.json
 *.code-workspace
 
 #My files
-examples/Milan/data/raw/bus.geojson
 cache/
 examples/Milan/outputs/runs/
 examples/Milan/old implementation/data/raw/bus.geojson
