@@ -1,16 +1,10 @@
-import random
 from dataclasses import dataclass
 from datetime import datetime
-from sys import getsizeof
-from time import time
 
-import geopandas as gpd
-import networkx as nx
 import numpy as np  # Generate working hours
-import osmnx as ox
 import pandas as pd
-import scipy
-from mesa_frames.agent import GeoAgentDF
+import polars as pl
+from mesa_frames import AgentSetPolars
 
 
 @dataclass
@@ -35,7 +29,7 @@ class MoverParams:
     # act_decision_rule : str = "buildings, weights = 1/df.geometry.distance(agent.geometry)"
 
 
-class Mover(GeoAgentDF):
+class Mover(AgentSetPolars):
     """The Mover class, is the base class for all agents in the simulation.
     It is able to move around the city using the road network.
     It has a unique id and a geometry (Point) that represents his position in the city. He also has a status that describes what he is currently doing.
@@ -94,9 +88,7 @@ class Mover(GeoAgentDF):
 
         # Initialize attributes
         cls.model.agents.loc[cls.mask, "status"] = "free"
-        cls.model.agents.loc[cls.mask, "node"] = cls.model.space.get_random_nodes(
-            n=cls.mask.sum()
-        )
+        cls.model.agents.loc[cls.mask, "node"] = cls.model.space.get_random_nodes(n=cls.mask.sum())
         # cls.model.agents.loc[cls.mask, "car"] = False
 
     @classmethod
@@ -199,22 +191,14 @@ class Mover(GeoAgentDF):
         cls.model.agents.loc[mask, "status"] = "free"
 
         # Set activity for cls.model.agents who are free and do not have a destination
-        cls._set_activity(
-            cls.mask
-            & (cls.model.agents["status"] == "free")
-            & (cls.model.agents["destination"].isna())
-        )
+        cls._set_activity(cls.mask & (cls.model.agents["status"] == "free") & (cls.model.agents["destination"].isna()))
 
         # Find paths for cls.model.agents without path and with a destination
         cls._set_path(
             cls.mask
             & (cls.model.agents["destination"].notna())
             & (  # those who have a destination
-                (
-                    cls.model.agents.index.isin(
-                        cls.model.paths[cls.model.paths["ancestor"].isna()].index
-                    )
-                )
+                (cls.model.agents.index.isin(cls.model.paths[cls.model.paths["ancestor"].isna()].index))
                 & (  # and do not have a path
                     cls.model.agents.destination != cls.model.agents.node
                 )
@@ -223,16 +207,13 @@ class Mover(GeoAgentDF):
 
         # Move agents #TODO: implement other modes of transport
         moving_mask = cls.model.paths.index.isin(cls.model.agents[cls.mask].index)
-        cls.model.paths.loc[moving_mask, "travelled_distance"] = cls.model.paths[
-            moving_mask
-        ]["travelled_distance"] + (cls.model.len_step * 60 * cls.params.walking_speed)
+        cls.model.paths.loc[moving_mask, "travelled_distance"] = cls.model.paths[moving_mask]["travelled_distance"] + (
+            cls.model.len_step * 60 * cls.params.walking_speed
+        )
 
         # Mark cls.model.agents who have reached their destination
-        arrived_mask_paths = cls.model.paths.index.isin(
-            cls.model.agents[cls.mask].index
-        ) & (  # those who have a path
-            cls.model.paths["travelled_distance"]
-            >= cls.model.paths["length"].groupby(level=0).transform("last")
+        arrived_mask_paths = cls.model.paths.index.isin(cls.model.agents[cls.mask].index) & (  # those who have a path
+            cls.model.paths["travelled_distance"] >= cls.model.paths["length"].groupby(level=0).transform("last")
         )  # and have reached the end of the path
         arrived_mask_agents = cls.model.agents.index.isin(
             cls.model.paths[arrived_mask_paths].index
@@ -242,9 +223,7 @@ class Mover(GeoAgentDF):
         cls._set_arrival(arrived_mask_agents, arrived_mask_paths)
 
         # Update the geometry of those who have not reached their destination
-        moving_mask = cls.model.agents.index.isin(
-            cls.model.paths[cls.model.paths.ancestor.notna()].index
-        )
+        moving_mask = cls.model.agents.index.isin(cls.model.paths[cls.model.paths.ancestor.notna()].index)
         cls._set_geometry(moving_mask)
 
         '''#For Workers and PoliceAgents, add their visit to info_neighborhoods
@@ -262,16 +241,13 @@ class Mover(GeoAgentDF):
         The method sets an activity for the agents in the mask.
         """
         # If agents are free and do not have a destination, they get an activity
-        if (
-            cls.model.datetime.hour >= cls.model.day_act_start
-            and cls.model.datetime.hour <= cls.model.day_act_end
-        ):
+        if cls.model.datetime.hour >= cls.model.day_act_start and cls.model.datetime.hour <= cls.model.day_act_end:
             act_time = "open_day"
         else:
             act_time = "open_night"
-        cls.model.agents.loc[
-            agents_mask, "destination"
-        ] = cls.model.space.get_random_nodes("activity", act_time, n=agents_mask.sum())
+        cls.model.agents.loc[agents_mask, "destination"] = cls.model.space.get_random_nodes(
+            "activity", act_time, n=agents_mask.sum()
+        )
 
     @classmethod
     def _set_path(cls, agents_mask):
@@ -285,9 +261,7 @@ class Mover(GeoAgentDF):
         # If possible, retrieve from paths, exploding to divide into edges
         paths = (
             pd.merge(
-                cls.model.agents.loc[
-                    agents_mask, ["node", "destination"]
-                ].reset_index(),
+                cls.model.agents.loc[agents_mask, ["node", "destination"]].reset_index(),
                 cls.model.space.paths,
                 on=["node", "destination"],
                 how="left",
@@ -298,16 +272,10 @@ class Mover(GeoAgentDF):
         )
         paths = paths.astype("int")
         paths.name = "new_ancestor"
-        cls.model.paths = pd.merge(
-            cls.model.paths, paths, left_index=True, right_index=True, how="left"
-        )
+        cls.model.paths = pd.merge(cls.model.paths, paths, left_index=True, right_index=True, how="left")
 
-        agents_mask = (
-            cls.model.paths.ancestor.isna() & cls.model.paths.new_ancestor.notna()
-        )
-        cls.model.paths.loc[agents_mask, "ancestor"] = cls.model.paths.loc[
-            agents_mask, "new_ancestor"
-        ]
+        agents_mask = cls.model.paths.ancestor.isna() & cls.model.paths.new_ancestor.notna()
+        cls.model.paths.loc[agents_mask, "ancestor"] = cls.model.paths.loc[agents_mask, "new_ancestor"]
         cls.model.paths.drop("new_ancestor", axis=1, inplace=True)
         cls.model.paths.loc[agents_mask, "successor"] = (
             cls.model.paths[agents_mask].groupby(level=0)["ancestor"].shift(-1)
@@ -329,39 +297,26 @@ class Mover(GeoAgentDF):
         )
         cls.model.paths.loc[agents_mask, "travelled_distance"] = 0
         # Drop the last ancestor occurence because it is the destination
-        cls.model.paths = cls.model.paths[
-            ~(cls.model.paths.ancestor.notna() & cls.model.paths.successor.isna())
-        ]
+        cls.model.paths = cls.model.paths[~(cls.model.paths.ancestor.notna() & cls.model.paths.successor.isna())]
         # cls.model.agents.loc[:, ['ancestor', 'successor']] = cls.model.agents[['ancestor', 'successor']].astype(int)
 
     @classmethod
     def _set_arrival(cls, agents_mask, paths_mask):
         """The method set arrival for agents in the mask for model.agents and model.paths"""
         cls.model.paths.loc[paths_mask] = np.nan
-        cls.model.paths = cls.model.paths[
-            (paths_mask & (~cls.model.paths.index.duplicated())) | (~paths_mask)
-        ]
+        cls.model.paths = cls.model.paths[(paths_mask & (~cls.model.paths.index.duplicated())) | (~paths_mask)]
 
         # Update columns
-        at_home_mask = agents_mask & (
-            cls.model.agents["destination"] == cls.model.agents["home"]
-        )
+        at_home_mask = agents_mask & (cls.model.agents["destination"] == cls.model.agents["home"])
         cls.model.agents.loc[at_home_mask, "status"] = "home"
-        at_work_mask = agents_mask & (
-            cls.model.agents["destination"] == cls.model.agents["work"]
-        )
+        at_work_mask = agents_mask & (cls.model.agents["destination"] == cls.model.agents["work"])
         cls.model.agents.loc[at_work_mask, "status"] = "home"
         act_mask = agents_mask & (~at_home_mask) & (~at_work_mask)
         cls.model.agents.loc[act_mask, "status"] = "busy"
         cls.model.agents.loc[act_mask, "activity_end_time"] = pd.to_datetime(
-            cls.model.datetime
-            + pd.to_timedelta(
-                cls.model.activity_len_distr.rvs(size=act_mask.sum()), unit="m"
-            )
+            cls.model.datetime + pd.to_timedelta(cls.model.activity_len_distr.rvs(size=act_mask.sum()), unit="m")
         )
-        cls.model.agents.loc[agents_mask, "node"] = cls.model.agents.loc[
-            agents_mask, "destination"
-        ]
+        cls.model.agents.loc[agents_mask, "node"] = cls.model.agents.loc[agents_mask, "destination"]
         cls.model.agents.loc[
             agents_mask,
             [
@@ -375,19 +330,13 @@ class Mover(GeoAgentDF):
         ] = np.nan
 
         # Keep only one occurrence for arrived agents
-        cls.model.agents = cls.model.agents[
-            (agents_mask & (~cls.model.agents.index.duplicated())) | (~agents_mask)
-        ]
+        cls.model.agents = cls.model.agents[(agents_mask & (~cls.model.agents.index.duplicated())) | (~agents_mask)]
 
     @classmethod
     def _set_geometry(cls, agents_mask):
         """The method sets the geometry for agents in the mask"""
         current_edge = (
-            cls.model.paths[
-                cls.model.paths["travelled_distance"] <= cls.model.paths["length"]
-            ]
-            .groupby(level=0)
-            .first()
+            cls.model.paths[cls.model.paths["travelled_distance"] <= cls.model.paths["length"]].groupby(level=0).first()
         )
         cls.model.agents.loc[agents_mask, "node"] = current_edge["ancestor"].reindex(
             cls.model.agents.loc[agents_mask].index

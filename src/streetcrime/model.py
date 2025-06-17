@@ -6,7 +6,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from mesa_frames.model import ModelDF
+from mesa_frames import ModelDF
 from scipy import stats
 
 from streetcrime.agents.mover import Mover
@@ -44,15 +44,10 @@ class StreetCrime(ModelDF):
         self,
         space: City,
         data_collection: str = "2d",  # TODO: implement different data collection frequencies (xw, xd, xh, weekly, daily, hourly)
-        transport: str
-        | list[
-            str
-        ] = "on_foot",  # TODO: implement other modes of transport 'car', 'public_transport'
+        transport: str | list[str] = "on_foot",  # TODO: implement other modes of transport 'car', 'public_transport'
         crime_theory: str = "RAT",  # TODO: implement other crime theories
         len_step: int = 10,  # minutes
-        start_datetime: datetime = datetime(
-            date.today().year, date.today().month, date.today().day, 5, 30
-        ),
+        start_datetime: datetime = datetime(date.today().year, date.today().month, date.today().day, 5, 30),
         day_act_start: int = 8,
         day_act_end: int = 19,
         mean_activity_length: float = 60,  # minutes
@@ -81,14 +76,14 @@ class StreetCrime(ModelDF):
         sd_activity_length : float
             The standard deviation of the length of an activity in minutes. Activity length is distributed as a lognorm. Default: 20
         """
-        super().__init__(space=space)
+        super().__init__()
+        self.space = space
 
         # Initialize model attributes
         self.activity_len_distr = stats.lognorm(
             s=np.sqrt(np.log(sd_activity_length**2 / mean_activity_length**2 + 1)),
             scale=math.exp(
-                np.log(mean_activity_length)
-                - 0.5 * np.log(sd_activity_length**2 / mean_activity_length**2 + 1)
+                np.log(mean_activity_length) - 0.5 * np.log(sd_activity_length**2 / mean_activity_length**2 + 1)
             ),
         )
         self.start_datetime = start_datetime
@@ -202,18 +197,14 @@ class StreetCrime(ModelDF):
         self.save_state()
 
         alpha = 1 if boundaries else 0
-        ax = gpd.read_file(
-            f"outputs/city/{self.space.city_name.split(',')[0]}_boundaries.gpkg"
-        ).plot(alpha=alpha)
+        ax = gpd.read_file(f"outputs/city/{self.space.city_name.split(',')[0]}_boundaries.gpkg").plot(alpha=alpha)
 
         if roads:
             self.space.roads_nodes.plot(ax=ax, color="black", markersize=1)
             self.space.roads_edges.plot(ax=ax, color="black")
 
         if buildings:
-            gpd.read_file(
-                f"outputs/city/{self.space.city_name.split(',')[0]}_buildings.gpkg"
-            ).plot(ax=ax, color="grey")
+            gpd.read_file(f"outputs/city/{self.space.city_name.split(',')[0]}_buildings.gpkg").plot(ax=ax, color="grey")
 
         if agents:
             (
@@ -227,9 +218,7 @@ class StreetCrime(ModelDF):
                     )
                 ).plot(ax=ax, color="green")
             )
-            self.agents[self.agents.geometry.notna()].geometry.plot(
-                ax=ax, color="green"
-            )
+            self.agents[self.agents.geometry.notna()].geometry.plot(ax=ax, color="green")
 
         if crimes:
             self.crimes.plot(ax=ax, color="red")

@@ -5,7 +5,7 @@ import geopandas as gpd
 import networkx as nx
 import osmnx as ox
 import pandas as pd
-from mesa_frames.agent import GeoAgentDF
+from mesa_frames import AgentSetPolars
 from pyproj import CRS
 
 # import numpy as np # For weight parser
@@ -70,15 +70,11 @@ class City:
 
         # Read paths files
         if os.path.isfile(f"outputs/city/{self.city_name.split(',')[0]}_paths.csv"):
-            self.paths: pd.DataFrame = pd.read_csv(
-                f"outputs/city/{self.city_name.split(',')[0]}_paths.csv"
-            )
+            self.paths: pd.DataFrame = pd.read_csv(f"outputs/city/{self.city_name.split(',')[0]}_paths.csv")
             # need to read strings as list types for .explode(), faster than using ast.literal_eval
             self.paths.path = self.paths.path.str.strip("[]").str.split(", ")
         else:
-            self.paths: pd.DataFrame = pd.DataFrame(
-                columns=["node", "destination", "path"]
-            )
+            self.paths: pd.DataFrame = pd.DataFrame(columns=["node", "destination", "path"])
 
         # If additonal layers are specified
         """if len(layers) > 0:
@@ -133,9 +129,7 @@ class City:
 
         # Check parameters
         if not 0 < traffic_factor <= 1:
-            raise ValueError(
-                f"Traffic factor set to {traffic_factor}. Should be between 0 and 1"
-            )
+            raise ValueError(f"Traffic factor set to {traffic_factor}. Should be between 0 and 1")
         if tolerance <= 0:
             raise ValueError(f"Tolerance set to {tolerance}. Should be greater than 0")
 
@@ -149,15 +143,9 @@ class City:
             print(f"Roads already downloaded in {roads_file}. Loading...")
             if ".gpkg" in roads_file:
                 # TODO: remove useless columns
-                self.roads_nodes = gpd.read_file(roads_file, layer="nodes").set_index(
-                    "osmid"
-                )
-                self.roads_edges = gpd.read_file(roads_file, layer="edges").set_index(
-                    ["u", "v", "key"]
-                )
-                self.roads = nx.DiGraph(
-                    ox.graph_from_gdfs(self.roads_nodes, self.roads_edges)
-                )
+                self.roads_nodes = gpd.read_file(roads_file, layer="nodes").set_index("osmid")
+                self.roads_edges = gpd.read_file(roads_file, layer="edges").set_index(["u", "v", "key"])
+                self.roads = nx.DiGraph(ox.graph_from_gdfs(self.roads_nodes, self.roads_edges))
                 self.roads_edges = (
                     self.roads_edges.sort_values("travel_time")
                     .reset_index()
@@ -193,7 +181,7 @@ class City:
         self,
         function: str | None = None,
         time: str | None = None,
-        agent: GeoAgentDF | None = None,
+        agent: AgentSetPolars | None = None,
         decision_rule: str | None = None,
         n=1,
     ) -> int | pd.Series:
@@ -233,9 +221,7 @@ class City:
         else:
             return self.roads_nodes.sample(n=n, weights=weights, replace=True).index
 
-    def _obtain_roads(
-        self, tolerance: int = 15, traffic_factor: int = 1
-    ) -> nx.MultiDiGraph:
+    def _obtain_roads(self, tolerance: int = 15, traffic_factor: int = 1) -> nx.MultiDiGraph:
         """Download roads using `osmnx.graph_from_place`
 
         Parameters
@@ -255,15 +241,11 @@ class City:
         print(f"Downloading roads of {self.city_name}...")
 
         # Downloading the full dataset of roads
-        roads = ox.graph_from_place(
-            self.city_name
-        )  # simplification is already activated
+        roads = ox.graph_from_place(self.city_name)  # simplification is already activated
         roads = ox.projection.project_graph(roads, to_crs=self.crs)
 
         if tolerance > 0:
-            roads = ox.simplification.consolidate_intersections(
-                roads, tolerance=tolerance
-            )
+            roads = ox.simplification.consolidate_intersections(roads, tolerance=tolerance)
 
         roads = ox.speed.add_edge_speeds(roads)
         nodes, edges = ox.graph_to_gdfs(roads, nodes=True, edges=True)
@@ -290,9 +272,7 @@ class City:
                 data.append((origin, destination, path))
         paths = pd.DataFrame(data, columns=["node", "destination", "path"])
         paths.astype({"node": "int64", "destination": "float64"})
-        paths.to_csv(
-            f"outputs/city/{self.city_name.split(',')[0]}_paths.csv", index=False
-        )
+        paths.to_csv(f"outputs/city/{self.city_name.split(',')[0]}_paths.csv", index=False)
         self.paths = paths
 
         print("Downloaded roads: " + "--- %s seconds ---" % (time.time() - start_time))
@@ -321,15 +301,11 @@ class City:
         start_time = time.time()
 
         if not buildings_file:
-            buildings_file = (
-                f"outputs/city/{self.city_name.split(',')[0]}_buildings.gpkg"
-            )
+            buildings_file = f"outputs/city/{self.city_name.split(',')[0]}_buildings.gpkg"
 
         print(f"Downloading buildings of {self.city_name}...")
         buildings = ox.features_from_place(self.city_name, tags={"building": True})
-        print(
-            "Downloaded buildings: " + "--- %s seconds ---" % (time.time() - start_time)
-        )
+        print("Downloaded buildings: " + "--- %s seconds ---" % (time.time() - start_time))
         buildings.to_crs(self.crs, inplace=True)
         buildings.reset_index(inplace=True)
         buildings = buildings[["geometry", "building"]]

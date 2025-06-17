@@ -20,6 +20,7 @@ classifiers = [
 ]
 dependencies = [
     "mesa-frames @ git+https://github.com/projectmesa/mesa-frames.git",
+    "beartype>=0.15.0",  # Required by mesa-frames but not auto-installed
     "geopandas>=0.14.0",
     "pandas>=2.1.0",
     "numpy>=1.26.0",
