@@ -47,6 +47,7 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
+*.py,cover
 .hypothesis/
 .pytest_cache/
 
@@ -58,6 +59,7 @@ coverage.xml
 *.log
 local_settings.py
 db.sqlite3
+db.sqlite3-journal
 
 # Flask stuff:
 instance/
@@ -85,12 +87,16 @@ ipython_config.py
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
 #   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don’t work, or not
+#   having no cross-platform support, pipenv may install dependencies that don't work, or not
 #   install all needed dependencies.
 #Pipfile.lock
 
-# celery beat schedule file
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow
+__pypackages__/
+
+# Celery stuff
 celerybeat-schedule
+celerybeat.pid
 
 # SageMath parsed files
 *.sage.py
@@ -122,23 +128,37 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Azure Functions artifacts
-bin
-obj
-appsettings.json
-local.settings.json
+# UV specific
+.venv/
+uv.lock
 
-# Azurite artifacts
-__blobstorage__
-__queuestorage__
-__azurite_db*__.json
-.python_packages
-
-#VS Code
+# IDE
 .vscode/
-*.code-workspace
+.idea/
+*.swp
+*.swo
+*~
 
-#My files
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+outputs/
 cache/
-examples/Milan/outputs/runs/
-examples/Milan/old implementation/data/raw/bus.geojson
+.cache/
+*.gpkg
+*.shp
+*.shx
+*.prj
+*.dbf
+*.cpg
+
+# Temporary files
+*.tmp
+*.temp
